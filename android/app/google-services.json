@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "750772071227",
+    "project_id": "asistencia-movil-2026",
+    "storage_bucket": "asistencia-movil-2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:750772071227:android:ae792c20f88ca4719ce51e",
+        "android_client_info": {
+          "package_name": "com.example.proyecto_asistencia"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCrOZSoUOgll2JXcGhDYAlWsJ-xpFlQtnY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:750772071227:android:fa4e80c6211960179ce51e",
+        "android_client_info": {
+          "package_name": "com.example.prueba_1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCrOZSoUOgll2JXcGhDYAlWsJ-xpFlQtnY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

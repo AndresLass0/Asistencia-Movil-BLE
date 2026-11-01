@@ -1,0 +1,117 @@
+// Reglas de seguridad de Cloud Firestore para BioAsistencia.
+// NO se despliegan automáticamente: revísalas y publícalas desde la consola
+// de Firebase (Firestore Database > Reglas) o con
+//   firebase deploy --only firestore:rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function institutionalEmail() {
+      return request.auth.token.email.matches('.*@udla[.]edu[.]co$');
+    }
+
+    // Perfil académico: solo su dueño puede leerlo y crearlo.
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && institutionalEmail()
+        && request.resource.data.keys().hasOnly(
+             ['name', 'email', 'role', 'code', 'faculty', 'bleEnabled', 'createdAt'])
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role in ['student', 'teacher']
+        && request.resource.data.code is string
+        && request.resource.data.code.matches('^[0-9]{5,15}$')
+        // El código debe quedar reservado para este mismo usuario en la
+        // misma operación (escritura por lotes).
+        && getAfter(/databases/$(database)/documents/codes/$(request.resource.data.code)).data.uid == uid;
+      // El usuario solo puede editar sus datos complementarios y
+      // preferencias; nunca rol, código, correo ni facultad.
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['program', 'semester', 'campus', 'settings', 'bleEnabled'])
+        && (!('program' in request.resource.data) || request.resource.data.program is string)
+        && (!('campus' in request.resource.data) || request.resource.data.campus is string)
+        && (!('semester' in request.resource.data)
+            || (request.resource.data.semester is int
+                && request.resource.data.semester >= 1
+                && request.resource.data.semester <= 20))
+        && (!('settings' in request.resource.data) || request.resource.data.settings is map)
+        && request.resource.data.bleEnabled is bool;
+      allow delete: if false;
+    }
+
+    // Índice código -> correo para iniciar sesión con el código.
+    // Lectura individual pública (se consulta antes de iniciar sesión);
+    // no se permite listar la colección.
+    // Riesgo aceptado: quien conozca un código válido puede ver su correo.
+    match /codes/{code} {
+      allow get: if true;
+      allow list: if false;
+      // "create" solo aplica si el documento no existe: garantiza unicidad.
+      allow create: if signedIn()
+        && institutionalEmail()
+        && code.matches('^[0-9]{5,15}$')
+        && request.resource.data.keys().hasOnly(['email', 'uid'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email;
+      allow update, delete: if false;
+    }
+
+    function enrolled(courseId) {
+      return request.auth.uid in
+        get(/databases/$(database)/documents/courses/$(courseId)).data.students;
+    }
+
+    // Asignaturas: el estudiante solo ve aquellas en las que está
+    // matriculado (la consulta usa where('students', arrayContains: uid)).
+    // Se crean y editan desde la consola o una futura vista docente.
+    match /courses/{courseId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.students;
+      allow write: if false;
+    }
+
+    // Sesiones de clase. Lectura para usuarios autenticados (contienen solo
+    // asignatura, estado y horas). Se abren/cierran desde la consola o una
+    // futura vista docente.
+    match /sessions/{sessionId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Asistencias: id = "{sessionId}_{uid}" => una por estudiante y sesión.
+    // Solo se crean si la sesión está abierta y el estudiante está
+    // matriculado en la asignatura de esa sesión.
+    match /attendance/{recordId} {
+      allow read: if signedIn() && resource.data.studentUid == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(
+             ['studentUid', 'courseId', 'sessionId', 'registeredAt'])
+        && request.resource.data.studentUid == request.auth.uid
+        && recordId == request.resource.data.sessionId + '_' + request.auth.uid
+        && request.resource.data.registeredAt == request.time
+        && get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.status == 'open'
+        && get(/databases/$(database)/documents/sessions/$(request.resource.data.sessionId)).data.courseId == request.resource.data.courseId
+        && enrolled(request.resource.data.courseId);
+      allow update, delete: if false;
+    }
+
+    // Reportes de incidencias para el docente (solo creación).
+    match /incidents/{incidentId} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(
+             ['studentUid', 'courseId', 'sessionId', 'message', 'createdAt'])
+        && request.resource.data.studentUid == request.auth.uid
+        && request.resource.data.message is string
+        && request.resource.data.message.size() <= 500
+        && request.resource.data.createdAt == request.time
+        && enrolled(request.resource.data.courseId);
+      allow read, update, delete: if false;
+    }
+  }
+}
