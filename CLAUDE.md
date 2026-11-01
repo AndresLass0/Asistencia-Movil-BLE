@@ -80,4 +80,4 @@ grep -rniE "\bunal\b|\bnacional\b|amazonía"  lib web android/app/src/main ios/R
 
 ## Estado del repositorio
 
-El proyecto **no está en git**. Antes de cambios amplios, sugiere `git init` o haz una copia de seguridad.
+Git con remoto `origin` = https://github.com/AndresLass0/Asistencia-Movil-BLE (público), rama `main`. Haz commit o push solo si el usuario lo pide. El usuario está empezando con git: explica los comandos en español y sin jerga. `google-services.json` y `firebase_options.dart` están en el repo (son identificadores de cliente; la seguridad depende de `firestore.rules`). Nunca subas keystores ni `key.properties`.
