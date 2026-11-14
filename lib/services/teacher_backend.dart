@@ -42,9 +42,6 @@ class RosterLink {
 abstract class TeacherBackend {
   const TeacherBackend();
 
-  /// true en el modo demostración: nada se guarda en el servidor.
-  bool get isDemo => false;
-
   Future<TeacherAccess> checkAccess();
   Future<void> sendVerificationEmail();
 

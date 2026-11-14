@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../core/app_colors.dart';
 import '../../core/ui_messages.dart';
 import '../../services/teacher_backend.dart';
-import '../../widgets/primary_button.dart';
+import '../../widgets/gate_message.dart';
 import '../../widgets/secondary_button.dart';
 import '../../widgets/state_views.dart';
 import 'teacher_home_screen.dart';
@@ -72,7 +71,7 @@ class _TeacherGateState extends State<TeacherGate> {
           );
         }
         if (snap.hasError) {
-          return _GateMessage(
+          return GateMessage(
             icon: Icons.cloud_off,
             title: 'No pudimos verificar tu cuenta',
             message:
@@ -80,7 +79,7 @@ class _TeacherGateState extends State<TeacherGate> {
                 'es posible que las reglas de la base de datos no estén '
                 'publicadas.',
             onRetry: _retry,
-            backend: widget.backend,
+            onSignOut: widget.backend.signOut,
           );
         }
         switch (snap.data!) {
@@ -92,7 +91,7 @@ class _TeacherGateState extends State<TeacherGate> {
               backend: widget.backend,
             );
           case TeacherAccess.emailNotVerified:
-            return _GateMessage(
+            return GateMessage(
               icon: Icons.mark_email_unread_outlined,
               title: 'Verifica tu correo',
               message:
@@ -106,10 +105,10 @@ class _TeacherGateState extends State<TeacherGate> {
                 icon: Icons.send_outlined,
                 onPressed: _sending ? () {} : _resend,
               ),
-              backend: widget.backend,
+              onSignOut: widget.backend.signOut,
             );
           case TeacherAccess.notAuthorized:
-            return _GateMessage(
+            return GateMessage(
               icon: Icons.admin_panel_settings_outlined,
               title: 'Cuenta docente pendiente de autorización',
               message:
@@ -118,82 +117,10 @@ class _TeacherGateState extends State<TeacherGate> {
                   'que lo habilite y vuelve a comprobar.',
               retryLabel: 'Volver a comprobar',
               onRetry: _retry,
-              backend: widget.backend,
+              onSignOut: widget.backend.signOut,
             );
         }
       },
-    );
-  }
-}
-
-class _GateMessage extends StatelessWidget {
-  const _GateMessage({
-    required this.icon,
-    required this.title,
-    required this.message,
-    required this.onRetry,
-    required this.backend,
-    this.retryLabel = 'Reintentar',
-    this.extra,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-  final VoidCallback onRetry;
-  final String retryLabel;
-  final Widget? extra;
-  final TeacherBackend backend;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircleAvatar(
-                  radius: 38,
-                  backgroundColor: AppColors.chip,
-                  child: Icon(icon, size: 38, color: AppColors.primary),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  message,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.textMuted),
-                ),
-                const SizedBox(height: 22),
-                PrimaryButton(
-                  label: retryLabel,
-                  icon: Icons.refresh,
-                  iconOnLeft: true,
-                  onPressed: onRetry,
-                ),
-                if (extra != null) ...[const SizedBox(height: 10), extra!],
-                const SizedBox(height: 10),
-                TextButton.icon(
-                  onPressed: backend.signOut,
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Cerrar sesión'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

@@ -22,7 +22,6 @@ class AttendanceSuccessScreen extends StatelessWidget {
     required this.course,
     required this.session,
     this.alreadyRegistered = false,
-    this.demo = false,
   });
 
   final AttendanceRecord record;
@@ -31,9 +30,6 @@ class AttendanceSuccessScreen extends StatelessWidget {
 
   /// La asistencia ya existía (no se duplicó).
   final bool alreadyRegistered;
-
-  /// Modo demostración: el registro solo existe en memoria.
-  final bool demo;
 
   @override
   Widget build(BuildContext context) {
@@ -91,12 +87,7 @@ class AttendanceSuccessScreen extends StatelessWidget {
               showDot: true,
             ),
             const SizedBox(height: 22),
-            _Receipt(
-              record: record,
-              course: course,
-              session: session,
-              demo: demo,
-            ),
+            _Receipt(record: record, course: course, session: session),
             const SizedBox(height: 16),
             const _ValidationNote(),
             const SizedBox(height: 18),
@@ -139,13 +130,11 @@ class _Receipt extends StatelessWidget {
     required this.record,
     required this.course,
     required this.session,
-    required this.demo,
   });
 
   final AttendanceRecord record;
   final Course course;
   final CourseSession session;
-  final bool demo;
 
   /// "+3 min desde el inicio" (o "Antes del inicio").
   String get _offset {
@@ -260,9 +249,7 @@ class _Receipt extends StatelessWidget {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          demo
-                              ? 'Modo demostración: este registro no se guarda.'
-                              : 'Registro guardado en BioAsistencia.',
+                          'Registro guardado en BioAsistencia.',
                           style: TextStyle(
                             fontSize: 11.5,
                             color: AppColors.textMuted,

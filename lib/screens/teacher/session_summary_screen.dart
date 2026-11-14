@@ -158,7 +158,7 @@ class _SummaryBody extends StatelessWidget {
         Text(
           closed
               ? 'El registro está cerrado. Los datos se guardaron en '
-                    '${backend.isDemo ? 'la demostración (no en el servidor)' : 'BioAsistencia'}.'
+                    'BioAsistencia.'
               : 'El registro sigue abierto; los totales pueden cambiar.',
           textAlign: TextAlign.center,
           style: const TextStyle(color: AppColors.textMuted),

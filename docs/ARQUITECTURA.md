@@ -33,12 +33,12 @@ lib/
 │   ├── attendance_service.dart   # registro del estudiante e incidencias
 │   ├── student_backend.dart      # StudentBackend + FirebaseStudentBackend
 │   ├── teacher_backend.dart      # TeacherBackend + FirebaseTeacherBackend
-│   ├── demo_backend.dart         # DemoMode + DemoStudentBackend (solo depuración)
-│   ├── demo_teacher_backend.dart # DemoTeacherBackend (solo depuración)
+│   ├── email_verification.dart   # EmailVerifier + FirebaseEmailVerifier
 │   ├── report_service.dart       # PDF (pdf + printing) y Excel de ambos roles
 │   └── spreadsheet.dart          # leer/escribir .xlsx y .csv; parseRoster
 ├── screens/
 │   ├── auth_gate.dart            # AuthGate + RoleGate
+│   ├── email_verification_gate.dart # exige el correo verificado (ambos roles)
 │   ├── login_screen.dart, register_screen.dart, forgot_password_screen.dart
 │   ├── home_screen.dart, course_detail_screen.dart, tabs/, attendance/   # estudiante
 │   └── teacher/                  # docente
@@ -47,18 +47,22 @@ lib/
 │       └── tabs/teacher_{classes,history,reports,profile}_tab.dart
 └── widgets/                      # compartidos (§6)
 assets/fonts/                     # Roboto (Apache 2.0), incrustada en los PDF
-test/                             # logic, academic, screens, student_screens, demo_mode, teacher_logic, teacher_screens
+test/                             # logic, academic, screens, student_screens, fake_backend, email_verification, teacher_logic, teacher_screens
+test/fakes/                       # FakeStudentBackend y FakeTeacherBackend: datos en memoria, solo para pruebas
 firestore.rules                   # reglas (se publican desde la consola)
 ```
 
 ## 3. Arranque y sesión
 
 `main.dart` → `Firebase.initializeApp` (con `StartupErrorApp` si falla) → `MaterialApp(home: AuthGate)`. `AuthGate` escucha `userChanges()` y es el **único** que alterna Login y la vista principal:
-- con sesión → `RoleGate` lee `users/{uid}`: `role == 'teacher'` → `TeacherGate`; si no (o sin perfil) → `HomeScreen`;
-- `TeacherGate` comprueba `teachers/{correo}` y el correo verificado antes de mostrar `TeacherHomeScreen`;
-- sin sesión y con `DemoMode` activo (solo depuración) → la vista del rol con datos de ejemplo.
+- sin sesión → `LoginScreen` (no hay modo demostración);
+- con sesión → `EmailVerificationGate`: si el correo no está verificado muestra "Verifica tu correo" (Ya lo verifiqué, Reenviar correo, Cerrar sesión). "Ya lo verifiqué" recarga el usuario y renueva el token para que las reglas vean `email_verified`;
+- verificado → `RoleGate` lee `users/{uid}`: `role == 'teacher'` → `TeacherGate`; si no (o sin perfil) → `HomeScreen`;
+- `TeacherGate` comprueba `teachers/{correo}` (y de nuevo el correo verificado) antes de mostrar `TeacherHomeScreen`.
 
 ### Roles y permisos
+El correo verificado es obligatorio para **ambos roles**: demuestra que quien usa la cuenta es dueño del buzón (Firebase Auth permite crear cuentas con correos ajenos). El registro envía el enlace al crear la cuenta. Si alguien se registró antes con tu correo, "¿Olvidaste tu contraseña?" envía el enlace a tu buzón y recuperas la cuenta.
+
 El rol del perfil **solo decide la vista**. La autorización está en las reglas: `isTeacher()` = correo verificado + `teachers/{correo}` activo (lo administra la institución). El registro como docente se rechaza (y se revierte la cuenta) si el correo no está autorizado. Sin Cloud Functions ni claims personalizados (plan gratuito).
 
 ## 4. Flujo de datos
@@ -95,7 +99,7 @@ Ciclo de una sesión:
 4. **Finalizar:** `closeSession` → `status: closed`, `closedAt` del servidor (no se puede reabrir).
 5. **Revisión:** `setAbsenceStatus` guarda `justifications` (justificada o confirmada).
 
-`StudentBackend` y `TeacherBackend` aíslan Firebase de las pantallas: la implementación real delega en Firestore y la de demostración trabaja en memoria. Las pantallas reciben el backend por parámetro.
+`StudentBackend` y `TeacherBackend` aíslan Firebase de las pantallas: la implementación real delega en Firestore y la de las pruebas (`test/fakes/`) trabaja en memoria. Las pantallas reciben el backend por parámetro.
 
 ## 6. Componentes compartidos
 
@@ -110,7 +114,7 @@ Ciclo de una sesión:
 | `LoadingView`, `MessageView`, `AcademicErrorView`, `NoCoursesView` | Estados de carga, error y vacío |
 | `showIncidentDialog` | Reporte de incidencias (Fallo y Detalle) |
 | `TeacherBottomNav` | Barra del docente: Clases · Historial · Reportes · Perfil |
-| `DemoBanner` | Aviso del modo demostración (ambos roles) |
+| `GateMessage` | Pantalla de aviso que bloquea el acceso (verificar correo, docente sin autorizar), con "Cerrar sesión" |
 | `teacher/teacher_ui.dart` | `runTeacherAction`, `confirmAction`, `StatTile`, `StatRow`, `InitialsAvatar` |
 
 ## 7. Navegación

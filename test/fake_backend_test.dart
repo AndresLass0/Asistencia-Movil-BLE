@@ -3,20 +3,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:proyecto_asistencia/models/user_profile.dart';
 import 'package:proyecto_asistencia/screens/home_screen.dart';
 import 'package:proyecto_asistencia/services/attendance_service.dart';
-import 'package:proyecto_asistencia/services/demo_backend.dart';
 
+import 'fakes/fake_student_backend.dart';
 import 'helpers.dart';
 import 'test_fonts.dart';
 
 void main() {
   setUpAll(loadRealFonts);
 
-  group('DemoStudentBackend', () {
+  group('FakeStudentBackend', () {
     test(
       'datos de ejemplo con sesión abierta, riesgo y periodo anterior',
       () async {
-        final backend = DemoStudentBackend(now: DateTime(2026, 11, 2, 18, 30));
-        final data = await backend.watchAcademic(DemoStudentBackend.uid).first;
+        final backend = FakeStudentBackend(now: DateTime(2026, 11, 2, 18, 30));
+        final data = await backend.watchAcademic(FakeStudentBackend.uid).first;
         expect(data.courses, hasLength(4));
         expect(data.pendingOpenCourses.single.id, 'demo-c1');
         expect(data.periods, hasLength(2));
@@ -28,8 +28,8 @@ void main() {
     test(
       'registra en memoria, no duplica y rechaza sin sesión abierta',
       () async {
-        final backend = DemoStudentBackend();
-        const uid = DemoStudentBackend.uid;
+        final backend = FakeStudentBackend();
+        const uid = FakeStudentBackend.uid;
         final data = await backend.watchAcademic(uid).first;
         final open = data.pendingOpenCourses.single;
 
@@ -49,32 +49,31 @@ void main() {
     );
 
     test('las preferencias se actualizan en memoria', () async {
-      final backend = DemoStudentBackend();
-      final next = backend.watchProfile(DemoStudentBackend.uid).skip(1).first;
+      final backend = FakeStudentBackend();
+      final next = backend.watchProfile(FakeStudentBackend.uid).skip(1).first;
       await backend.updateSettings(
-        DemoStudentBackend.uid,
+        FakeStudentBackend.uid,
         const UserSettings(riskAlerts: false),
       );
       expect((await next)!.settings.riskAlerts, isFalse);
     });
   });
 
-  group('HomeScreen en modo demostración', () {
-    Widget home(DemoStudentBackend b) => HomeScreen(
-      uid: DemoStudentBackend.uid,
-      email: DemoStudentBackend.email,
-      authDisplayName: DemoStudentBackend.name,
+  group('HomeScreen con datos de prueba', () {
+    Widget home(FakeStudentBackend b) => HomeScreen(
+      uid: FakeStudentBackend.uid,
+      email: FakeStudentBackend.email,
+      authDisplayName: FakeStudentBackend.name,
       backend: b,
     );
 
-    testWidgets('muestra el aviso y recorre las pestañas', (tester) async {
+    testWidgets('recorre las pestañas sin aviso de demostración', (
+      tester,
+    ) async {
       useTallView(tester);
-      await tester.pumpWidget(wrap(home(DemoStudentBackend())));
+      await tester.pumpWidget(wrap(home(FakeStudentBackend())));
       await pumpFrames(tester);
-      expect(
-        find.text('Modo demostración: datos de ejemplo, no se guardan.'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Modo demostración'), findsNothing);
       expect(find.text('Hola, Estudiante 👋'), findsOneWidget);
       expect(find.text('Programación Competitiva'), findsWidgets);
 
@@ -83,22 +82,17 @@ void main() {
         await pumpFrames(tester);
         expect(tester.takeException(), isNull);
       }
-      expect(find.text(DemoStudentBackend.email), findsOneWidget);
+      expect(find.text(FakeStudentBackend.email), findsOneWidget);
     });
 
-    testWidgets('registrar asistencia abre el comprobante de demostración', (
-      tester,
-    ) async {
+    testWidgets('registrar asistencia abre el comprobante', (tester) async {
       useTallView(tester);
-      await tester.pumpWidget(wrap(home(DemoStudentBackend())));
+      await tester.pumpWidget(wrap(home(FakeStudentBackend())));
       await pumpFrames(tester);
       await tester.tap(find.text('Registrar asistencia').first);
       await pumpFrames(tester, frames: 15); // búsqueda mínima de 1,5 s
       expect(find.text('¡Asistencia registrada!'), findsOneWidget);
-      expect(
-        find.text('Modo demostración: este registro no se guarda.'),
-        findsOneWidget,
-      );
+      expect(find.text('Registro guardado en BioAsistencia.'), findsOneWidget);
     });
   });
 }

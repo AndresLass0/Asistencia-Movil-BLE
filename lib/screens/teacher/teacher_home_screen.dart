@@ -11,7 +11,6 @@ import '../../models/teacher_snapshot.dart';
 import '../../models/user_profile.dart';
 import '../../services/report_service.dart';
 import '../../services/teacher_backend.dart';
-import '../../widgets/demo_banner.dart';
 import '../../widgets/home_header.dart';
 import '../../widgets/teacher_bottom_nav.dart';
 import 'active_session_screen.dart';
@@ -371,14 +370,7 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
         pendingSessions: state.data?.activeSessions.length ?? 0,
         onNotifications: _showActiveSessions,
       ),
-      body: widget.backend.isDemo
-          ? Column(
-              children: [
-                const DemoBanner(),
-                Expanded(child: body),
-              ],
-            )
-          : body,
+      body: body,
       bottomNavigationBar: TeacherBottomNav(currentIndex: _index, onTap: _goTo),
     );
   }

@@ -11,7 +11,7 @@
 | Código | Obligatorio al registrarse; estudiante: código estudiantil; docente: código o documento propio |
 | Almacenamiento | Cloud Firestore (perfil + índice código → correo). El equipo habilita Firestore y publica `firestore.rules` |
 | Doble factor en Recuperar | Se conserva deshabilitado, "Próximamente" |
-| Accesos demo | Solo en modo debug |
+| Accesos demo | Eliminados (2026-11-14) |
 | Regla del 80 % | No confirmada → texto neutro |
 
 ## Fase 0 — Preparación
@@ -40,7 +40,7 @@
 |---|---|---|
 | 2.1 | Retirar promesas no implementadas | ✅ |
 | 2.2 | Campo de doble factor | ✅ "Próximamente" |
-| 2.3 | Botones demo | ✅ Solo debug |
+| 2.3 | Botones demo | ✅ Eliminados (2026-11-14) |
 | 2.4 | Comprobante sin valores fijos | ✅ |
 | 2.5 | Estado de Inicio coherente con el escaneo | ✅ |
 | 2.6 | Mensaje de resumen | ✅ Neutro |
@@ -87,7 +87,7 @@ Implementada desde `docs/images_views_docente/`: acceso con autorización (`teac
 | 5.1 | Vista de docente (qué ve y qué puede hacer) | ✅ Fase 4c (falta validar en servidor) |
 | 5.2 | Persistir asistencias en Firestore e Historial real | ✅ Hecho (falta publicar las reglas) |
 | 5.2b | Vista docente para abrir y cerrar sesiones y crear asignaturas | ✅ Fase 4c |
-| 5.3 | Verificación de correo / restricción de dominio en Auth | 🟡 Obligatoria para docentes (sin cambiar la configuración de Firebase); estudiantes ❓ |
+| 5.3 | Verificación de correo / restricción de dominio en Auth | ✅ Obligatoria para ambos roles en la app (`EmailVerificationGate`) y en las reglas (`verified()`), sin cambiar la configuración de Firebase |
 | 5.4 | BLE real (paquete, permisos, textos sobre ubicación) | ❓ Hardware y protocolo |
 | 5.5 | `AuthService` inyectable + pruebas de flujos con Firebase simulado | — |
 | 5.6 | Firma de release e identificadores definitivos | ❓ Re-registro en Firebase |

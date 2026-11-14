@@ -1,5 +1,4 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/app_colors.dart';
@@ -7,8 +6,6 @@ import '../core/app_routes.dart';
 import '../core/auth_messages.dart';
 import '../core/ui_messages.dart';
 import '../core/validators.dart';
-import '../models/user_profile.dart';
-import '../services/demo_backend.dart';
 import '../services/user_profile_service.dart';
 import '../widgets/app_link.dart';
 import '../widgets/app_text_field.dart';
@@ -38,12 +35,6 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
     showAppMessage(context, text);
   }
-
-  /// Modo demostración (solo depuración): vistas reales con datos de
-  /// ejemplo en memoria, sin Firebase. AuthGate muestra la vista del rol.
-  void _demoStudent() => DemoMode.enter(UserRole.student);
-
-  void _demoTeacher() => DemoMode.enter(UserRole.teacher);
 
   Future<void> _login() async {
     if (_loading) return; // evita múltiples intentos simultáneos
@@ -111,8 +102,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 isLoading: _loading,
                 emailController: _emailCtrl,
                 passwordController: _passCtrl,
-                onDemoTeacher: _demoTeacher,
-                onDemoStudent: _demoStudent,
               ),
               const SizedBox(height: 16),
               // Acceso a la pantalla de registro.
@@ -218,8 +207,6 @@ class _LoginCard extends StatelessWidget {
   const _LoginCard({
     required this.onForgot,
     required this.onLogin,
-    required this.onDemoTeacher,
-    required this.onDemoStudent,
     required this.isLoading,
     required this.emailController,
     required this.passwordController,
@@ -230,8 +217,6 @@ class _LoginCard extends StatelessWidget {
   final TextEditingController passwordController;
   final VoidCallback onForgot;
   final VoidCallback onLogin;
-  final VoidCallback onDemoTeacher;
-  final VoidCallback onDemoStudent;
 
   @override
   Widget build(BuildContext context) {
@@ -279,99 +264,7 @@ class _LoginCard extends StatelessWidget {
             isLoading: isLoading,
             onPressed: onLogin,
           ),
-          // Accesos de demostración: solo en compilaciones de depuración
-          // (decisión del equipo; aún no existen cuentas demo).
-          if (kDebugMode) ...[
-            const SizedBox(height: 22),
-            const _DemoDivider(),
-            const SizedBox(height: 14),
-            _DemoButton(
-              icon: Icons.badge_outlined,
-              label: 'Demostración: Entrar como Docente',
-              color: AppColors.primary,
-              onTap: onDemoTeacher,
-            ),
-            const SizedBox(height: 10),
-            _DemoButton(
-              icon: Icons.school_outlined,
-              label: 'Demostración: Entrar como Estudiante',
-              color: AppColors.textDark,
-              onTap: onDemoStudent,
-            ),
-          ],
         ],
-      ),
-    );
-  }
-}
-
-class _DemoDivider extends StatelessWidget {
-  const _DemoDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Row(
-      children: [
-        Expanded(child: Divider(color: AppColors.barEmpty)),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            'ACCESOS RÁPIDOS\nDEMO',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 11,
-              letterSpacing: 1,
-              color: AppColors.textMuted,
-            ),
-          ),
-        ),
-        Expanded(child: Divider(color: AppColors.barEmpty)),
-      ],
-    );
-  }
-}
-
-class _DemoButton extends StatelessWidget {
-  const _DemoButton({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.chip.withValues(alpha: 0.6),
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: 22),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: color,
-                  ),
-                ),
-              ),
-              const Icon(Icons.chevron_right, size: 20),
-            ],
-          ),
-        ),
       ),
     );
   }

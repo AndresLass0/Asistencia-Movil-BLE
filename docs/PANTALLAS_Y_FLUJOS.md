@@ -8,36 +8,37 @@
 
 ```
 AuthGate ─┬─ sin sesión → Login ─┬─ push → Registro (/register)
-          │                      ├─ push → Recuperar (/forgot-password)
-          │                      └─ (debug) Demostración → Estudiante | Docente
-          └─ con sesión → RoleGate (lee users/{uid}.role)
-                 ├─ estudiante (o sin perfil) → HomeScreen
-                 │      ├─ [0] Inicio ──────────┐
-                 │      ├─ [1] Mis Clases ──────┼─ push Detalle de asignatura
-                 │      ├─ [2] Asistencia ◀─────┘
-                 │      │      └─ push → Comprobante | Señal no encontrada
-                 │      ├─ [3] Historial ── PDF
-                 │      └─ [4] Perfil ── Cerrar sesión
-                 └─ docente → TeacherGate (autorizado + correo verificado)
-                        ├─ no autorizado / sin verificar → pantalla de aviso (reintentar, cerrar sesión)
-                        └─ TeacherHomeScreen
-                               ├─ [0] Clases ── Iniciar asistencia → hoja de duración → push Sesión activa
-                               │        │                                   └─ Finalizar → Resumen (reemplaza)
-                               │        └─ Crear / Editar clase (push) · Eliminar
-                               ├─ [1] Historial ── detalle, PDF, Excel, revisar inasistencias (push Resumen)
-                               ├─ [2] Reportes ── periodo, consolidado PDF y Excel
-                               └─ [3] Perfil ── Cerrar sesión
+          │                      └─ push → Recuperar (/forgot-password)
+          └─ con sesión → EmailVerificationGate ── sin verificar → "Verifica tu correo"
+                 │                          (Ya lo verifiqué · Reenviar · Cerrar sesión)
+                 └─ verificado → RoleGate (lee users/{uid}.role)
+                    ├─ estudiante (o sin perfil) → HomeScreen
+                    │      ├─ [0] Inicio ──────────┐
+                    │      ├─ [1] Mis Clases ──────┼─ push Detalle de asignatura
+                    │      ├─ [2] Asistencia ◀─────┘
+                    │      │      └─ push → Comprobante | Señal no encontrada
+                    │      ├─ [3] Historial ── PDF
+                    │      └─ [4] Perfil ── Cerrar sesión
+                    └─ docente → TeacherGate (autorizado + correo verificado)
+                           ├─ no autorizado / sin verificar → pantalla de aviso (reintentar, cerrar sesión)
+                           └─ TeacherHomeScreen
+                                  ├─ [0] Clases ── Iniciar asistencia → hoja de duración → push Sesión activa
+                                  │        │                                   └─ Finalizar → Resumen (reemplaza)
+                                  │        └─ Crear / Editar clase (push) · Eliminar
+                                  ├─ [1] Historial ── detalle, PDF, Excel, revisar inasistencias (push Resumen)
+                                  ├─ [2] Reportes ── periodo, consolidado PDF y Excel
+                                  └─ [3] Perfil ── Cerrar sesión
 ```
 
 Solo hay dos rutas con nombre (`/register`, `/forgot-password`). Todo lo demás se abre con `push` o cambiando de pestaña.
 
 ## 2. Autenticación (sin cambios en esta fase)
 
-Login (correo `@udla.edu.co` o código), Registro (rol, código único, facultad), Recuperar contraseña (doble factor "Próximamente"). Ver `docs/MODELO_DE_DATOS.md` para `users` y `codes`.
+Login (correo `@udla.edu.co` o código), Registro (rol, código único, facultad obligatoria; envía el correo de verificación), Recuperar contraseña (doble factor "Próximamente"). **Verifica tu correo** (`EmailVerificationGate`): obligatoria para ambos roles antes de entrar. Ver `docs/MODELO_DE_DATOS.md` para `users` y `codes`.
 
 ## 3. Vistas del estudiante
 
-**Modo demostración (solo depuración):** "Demostración: Entrar como Estudiante" del Login abre estas mismas vistas con datos de ejemplo en memoria (`DemoStudentBackend`). Nada se lee ni se escribe en Firebase y una franja oscura lo indica. Se puede registrar la asistencia de la sesión abierta de ejemplo, editar el perfil y generar el PDF; las incidencias no se envían. "Cerrar sesión" vuelve al Login. "Entrar como Docente" solo avisa de que la vista docente aún no existe.
+Ya no existe modo demostración: las vistas solo muestran datos reales de Firestore (o estados vacíos). Las pruebas automáticas usan `FakeStudentBackend` (`test/fakes/`).
 
 Todas las pestañas muestran estados de **carga**, **error** ("No se pudieron cargar tus clases" con la causa) y **sin asignaturas** ("Aún no tienes asignaturas").
 
@@ -113,8 +114,8 @@ Nombre, correo, rol, código, facultad y sede ("Sin registrar" si faltan); resum
 | F3 Reportar | Fallo o Detalle → Reportar incidencia → `incidents` |
 | F4 Perfil | Editar programa, semestre y sede · alertas · BLE (preferencia) |
 | F5 Cerrar sesión | Perfil → confirmar → Login |
+| F0 Alta de cuenta | Registro → correo de verificación → abrir enlace → "Ya lo verifiqué" → vista del rol |
 | D1 Acceso docente | Administración crea `teachers/{correo}` → registro como Docente → verificar correo → TeacherGate → Clases |
 | D2 Crear clase | Clases → Crear clase → datos, horario, lista (Excel/CSV o manual) → Guardar (vincula códigos) |
 | D3 Tomar asistencia | Clases → Iniciar asistencia → duración → Sesión activa (presentes en vivo, excepciones) → Finalizar → Resumen → justificar o confirmar → PDF/Excel |
 | D4 Consultar | Historial (por mes y asignatura) · Reportes (periodo, riesgo, incidencias, consolidado) |
-| D5 Demostración | Login (debug) → "Entrar como Docente" → datos de ejemplo en memoria |

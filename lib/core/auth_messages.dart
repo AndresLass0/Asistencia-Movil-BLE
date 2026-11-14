@@ -16,7 +16,11 @@ String authErrorMessage(FirebaseAuthException e) {
     case 'invalid-credential':
       return kInvalidCredentialsMessage;
     case 'email-already-in-use':
-      return 'Ya existe una cuenta registrada con ese correo.';
+      // Si el correo es tuyo y no creaste esa cuenta, "¿Olvidaste tu
+      // contraseña?" envía el enlace a tu buzón y la recuperas.
+      return 'Ya existe una cuenta registrada con ese correo. Si es tuyo, '
+          'usa "¿Olvidaste tu contraseña?" en el inicio de sesión para '
+          'recuperarla.';
     case 'weak-password':
       return 'La contraseña es muy débil. Usa al menos 8 caracteres.';
     case 'operation-not-allowed':

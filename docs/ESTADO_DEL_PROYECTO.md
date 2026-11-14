@@ -1,6 +1,6 @@
 # Estado del proyecto
 
-> Actualizado el 2026-11-01, tras implementar la vista del docente. Documentos: [ARQUITECTURA](ARQUITECTURA.md) · [MODELO_DE_DATOS](MODELO_DE_DATOS.md) · [PANTALLAS_Y_FLUJOS](PANTALLAS_Y_FLUJOS.md) · [AUDITORIA_DE_CONSISTENCIA](AUDITORIA_DE_CONSISTENCIA.md) · [PLAN_DE_CORRECCIONES](PLAN_DE_CORRECCIONES.md)
+> Actualizado el 2026-11-14: sin modo demostración y con verificación de correo obligatoria. Documentos: [ARQUITECTURA](ARQUITECTURA.md) · [MODELO_DE_DATOS](MODELO_DE_DATOS.md) · [PANTALLAS_Y_FLUJOS](PANTALLAS_Y_FLUJOS.md) · [AUDITORIA_DE_CONSISTENCIA](AUDITORIA_DE_CONSISTENCIA.md) · [PLAN_DE_CORRECCIONES](PLAN_DE_CORRECCIONES.md)
 
 ## 1. Resumen
 
@@ -17,15 +17,16 @@ La asistencia se valida con la **sesión que abre el docente** y su ventana de r
 | Login, registro, recuperación, cierre de sesión | ✅ | ✅ (sin Firebase) | En dispositivo |
 | Vistas del estudiante | ✅ | ✅ | Con datos reales |
 | Autorización de docentes (`teachers` + correo verificado) | ✅ app y reglas | ✅ pantallas de acceso | **Reglas en el servidor** |
-| Crear / editar / eliminar clase | ✅ | ✅ (demostración) | Escrituras reales |
+| Crear / editar / eliminar clase | ✅ | ✅ (datos de prueba) | Escrituras reales |
 | Importar lista .xlsx/.csv y plantilla | ✅ | ✅ lectura/escritura de archivos | Selector de archivos en el dispositivo |
-| Vincular códigos con cuentas | ✅ | ✅ (demostración) | Con cuentas reales |
+| Vincular códigos con cuentas | ✅ | ✅ (datos de prueba) | Con cuentas reales |
 | Abrir sesión con duración, cierre automático, finalizar | ✅ | ✅ | Reglas en el servidor |
 | Presentes en vivo, excepción manual | ✅ | ✅ | Con varios dispositivos |
 | Justificar / confirmar inasistencias | ✅ | ✅ | Escrituras reales |
 | Historial, reportes, riesgo, incidencias | ✅ | ✅ cálculos y pantallas | Con datos reales |
 | PDF y Excel del docente | ✅ | ✅ generación del .xlsx | Diálogos nativos de guardar/compartir |
-| Modo demostración (estudiante y docente, solo debug) | ✅ | ✅ | — |
+| Verificación de correo obligatoria (ambos roles) | ✅ app y reglas | ✅ pantalla de verificación | Recepción del correo en buzones `@udla.edu.co` |
+| Modo demostración | Eliminado (2026-11-14); los datos de ejemplo solo existen en `test/fakes/` | — | — |
 | **BLE (emisión y detección)** | ❌ | — | Requiere protocolo y hardware |
 | Notificaciones push | ❌ | — | Decisión pendiente |
 
@@ -43,7 +44,7 @@ La asistencia se valida con la **sesión que abre el docente** y su ventana de r
 | Validación | Resultado |
 |---|---|
 | `flutter analyze --no-pub` | **No issues found** |
-| `flutter test --no-pub` | **95/95 superadas**: lógica y cálculos de ambos roles, archivos .xlsx/.csv, acceso del docente (autorizado, no autorizado, sin verificar), recorrido del docente en demostración (finalizar sesión, excepción manual, justificar, iniciar con duración, crear clase, validaciones) y desbordamientos en 320 dp con texto al 130 % |
+| `flutter test --no-pub` | **101/101 superadas**: lógica y cálculos de ambos roles, archivos .xlsx/.csv, acceso del docente (autorizado, no autorizado, sin verificar), recorrido del docente con datos de prueba, verificación de correo (finalizar sesión, excepción manual, justificar, iniciar con duración, crear clase, validaciones) y desbordamientos en 320 dp con texto al 130 % |
 | `flutter build apk --debug` | **Compila** (incluye `file_picker`) |
 | Revisión visual | Capturas de las pantallas del docente con datos de ejemplo. Corregidos: desplegable de periodo desbordado, "1 faltas", botón partido en dos líneas y datos de ejemplo con riesgo exagerado |
 | Búsqueda institucional | Sin "UN", "SIA", "UNAL", "Nacional", "Amazonía" ni "80 %" en `lib/` |

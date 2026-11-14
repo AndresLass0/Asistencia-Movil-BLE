@@ -140,17 +140,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       );
 
-      // Docente: correo verificado obligatorio para operar (reglas).
-      if (_role == UserRole.teacher) {
-        try {
-          await created.sendEmailVerification();
-          _showMessage(
-            'Cuenta creada. Te enviamos un correo para verificar tu '
-            'dirección antes de usar las funciones de docente.',
-          );
-        } catch (_) {
-          // Se podrá reenviar desde la pantalla de verificación.
-        }
+      // Correo verificado obligatorio para todos (EmailVerificationGate y
+      // reglas): demuestra que la cuenta es del dueño del correo.
+      try {
+        await created.sendEmailVerification();
+        _showMessage(
+          'Cuenta creada. Te enviamos un correo a $email para verificar '
+          'que es tuyo.',
+        );
+      } catch (_) {
+        // Se podrá reenviar desde la pantalla de verificación.
       }
 
       // AuthGate (debajo de esta pantalla) ya muestra la vista del rol.

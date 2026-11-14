@@ -12,7 +12,6 @@ import '../../widgets/app_card.dart';
 import '../../widgets/app_top_bar.dart';
 import '../../widgets/primary_button.dart';
 import '../../widgets/section_header.dart';
-import '../../widgets/status_chip.dart';
 import 'teacher_ui.dart';
 
 /// Crear o editar una asignatura: datos, horario, lista de estudiantes
@@ -633,16 +632,6 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
             isLoading: _saving,
             onPressed: _save,
           ),
-          if (widget.backend.isDemo) ...[
-            const SizedBox(height: 10),
-            const Center(
-              child: StatusChip(
-                label: 'Modo demostración: no se guarda en el servidor',
-                background: AppColors.grayChip,
-                foreground: AppColors.hint,
-              ),
-            ),
-          ],
         ],
       ),
     );

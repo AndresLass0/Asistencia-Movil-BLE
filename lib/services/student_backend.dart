@@ -10,13 +10,10 @@ import 'user_profile_service.dart';
 /// Operaciones que necesitan las vistas del estudiante.
 ///
 /// La implementación normal ([FirebaseStudentBackend]) delega en los
-/// servicios de Firebase. El modo demostración (solo depuración) usa
-/// `DemoStudentBackend`, que trabaja en memoria y no toca Firebase.
+/// servicios de Firebase. Las pruebas automáticas usan
+/// `FakeStudentBackend` (en `test/fakes/`), que trabaja en memoria.
 abstract class StudentBackend {
   const StudentBackend();
-
-  /// true en el modo demostración: los cambios no se guardan en el servidor.
-  bool get isDemo => false;
 
   Stream<UserProfile?> watchProfile(String uid);
   Stream<AcademicSnapshot> watchAcademic(String uid);

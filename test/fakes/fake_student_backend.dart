@@ -1,48 +1,14 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:proyecto_asistencia/models/academic_snapshot.dart';
+import 'package:proyecto_asistencia/models/attendance_record.dart';
+import 'package:proyecto_asistencia/models/course.dart';
+import 'package:proyecto_asistencia/models/course_session.dart';
+import 'package:proyecto_asistencia/models/user_profile.dart';
+import 'package:proyecto_asistencia/services/attendance_service.dart';
+import 'package:proyecto_asistencia/services/student_backend.dart';
 
-import '../models/academic_snapshot.dart';
-import '../models/attendance_record.dart';
-import '../models/course.dart';
-import '../models/course_session.dart';
-import '../models/user_profile.dart';
-import 'attendance_service.dart';
-import 'demo_teacher_backend.dart';
-import 'student_backend.dart';
-
-export 'demo_teacher_backend.dart';
-
-/// Modo demostración del Login ("Entrar como Estudiante" / "Entrar como
-/// Docente").
-///
-/// Solo existe en compilaciones de depuración (`kDebugMode`). Muestra las
-/// vistas reales con **datos de ejemplo en memoria**: nada se lee ni se
-/// escribe en Firebase y todo se pierde al salir. La interfaz lo indica con
-/// un aviso visible.
-class DemoMode {
-  DemoMode._();
-
-  /// Rol de la demostración en curso (null = no hay). AuthGate lo escucha.
-  static final active = ValueNotifier<UserRole?>(null);
-
-  /// Datos de la entrada actual; se descartan al salir.
-  static DemoStudentBackend? backend;
-  static DemoTeacherBackend? teacherBackend;
-
-  static void enter([UserRole role = UserRole.student]) {
-    if (!kDebugMode) return;
-    backend = role == UserRole.student ? DemoStudentBackend() : null;
-    teacherBackend = role == UserRole.teacher ? DemoTeacherBackend() : null;
-    active.value = role;
-  }
-
-  static void exit() {
-    active.value = null;
-    backend = null;
-    teacherBackend = null;
-  }
-}
+export 'fake_teacher_backend.dart';
 
 /// Emite el valor actual al suscribirse y después cada cambio. La
 /// suscripción es síncrona, así no se pierde ninguna actualización.
@@ -53,15 +19,15 @@ Stream<T> watchValue<T>(T Function() current, Stream<T> changes) =>
       c.onCancel = sub.cancel;
     });
 
-/// Backend en memoria para el modo demostración.
-class DemoStudentBackend extends StudentBackend {
-  DemoStudentBackend({DateTime? now}) : _now = now ?? DateTime.now() {
+/// Backend del estudiante en memoria, solo para las pruebas automáticas.
+class FakeStudentBackend extends StudentBackend {
+  FakeStudentBackend({DateTime? now}) : _now = now ?? DateTime.now() {
     _build();
   }
 
   static const uid = 'demo';
-  static const email = 'estudiante.demo@udla.edu.co';
-  static const name = 'Estudiante de demostración';
+  static const email = 'estudiante.prueba@udla.edu.co';
+  static const name = 'Estudiante de prueba';
 
   final DateTime _now;
   final _courses = <Course>[];
@@ -78,9 +44,6 @@ class DemoStudentBackend extends StudentBackend {
     faculty: '',
     bleEnabled: false,
   );
-
-  @override
-  bool get isDemo => true;
 
   AcademicSnapshot get _snapshot => AcademicSnapshot(
     courses: _courses,
@@ -284,7 +247,7 @@ class DemoStudentBackend extends StudentBackend {
     String? sessionId,
     String teacherUid = '',
   }) async {
-    // En demostración no se envía nada.
+    // En las pruebas no se envía nada.
   }
 
   void _setProfile(UserProfile p) {
@@ -336,5 +299,5 @@ class DemoStudentBackend extends StudentBackend {
       _setProfile(_copy(bleEnabled: enabled));
 
   @override
-  Future<void> signOut() async => DemoMode.exit();
+  Future<void> signOut() async {}
 }

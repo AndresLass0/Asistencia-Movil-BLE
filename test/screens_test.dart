@@ -40,11 +40,10 @@ void main() {
       expect(find.text('Ingresa tu contraseña.'), findsOneWidget);
     });
 
-    testWidgets('accesos demo visibles en modo debug (pruebas)', (
-      tester,
-    ) async {
+    testWidgets('no hay accesos de demostración', (tester) async {
       await tester.pumpWidget(wrap(const LoginScreen()));
-      expect(find.text('Demostración: Entrar como Docente'), findsOneWidget);
+      expect(find.textContaining('Demostración'), findsNothing);
+      expect(find.textContaining('DEMO'), findsNothing);
     });
   });
 

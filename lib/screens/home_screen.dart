@@ -10,7 +10,6 @@ import '../models/user_profile.dart';
 import '../services/report_service.dart';
 import '../services/student_backend.dart';
 import '../widgets/app_bottom_nav.dart';
-import '../widgets/demo_banner.dart';
 import '../widgets/home_header.dart';
 import 'course_detail_screen.dart';
 import 'tabs/attendance_tab.dart';
@@ -39,7 +38,7 @@ class HomeScreen extends StatefulWidget {
   /// Nombre de Firebase Auth (si lo tiene); si no, el del perfil.
   final String authDisplayName;
 
-  /// Firebase en uso normal; en memoria en el modo demostración.
+  /// Firebase en la app; en memoria en las pruebas.
   final StudentBackend backend;
 
   @override
@@ -347,14 +346,7 @@ class _HomeScreenState extends State<HomeScreen> {
         pendingSessions: state.data?.pendingOpenCourses.length ?? 0,
         onNotifications: _showOpenSessions,
       ),
-      body: widget.backend.isDemo
-          ? Column(
-              children: [
-                const DemoBanner(),
-                Expanded(child: _buildTab(state)),
-              ],
-            )
-          : _buildTab(state),
+      body: _buildTab(state),
       bottomNavigationBar: AppBottomNav(currentIndex: _index, onTap: _goTo),
     );
   }

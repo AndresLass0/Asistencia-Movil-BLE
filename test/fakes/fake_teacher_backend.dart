@@ -1,25 +1,26 @@
 import 'dart:async';
 
-import '../models/attendance_record.dart';
-import '../models/course.dart';
-import '../models/course_session.dart';
-import '../models/incident.dart';
-import '../models/justification.dart';
-import '../models/teacher_snapshot.dart';
-import '../models/user_profile.dart';
-import 'demo_backend.dart';
-import 'teacher_backend.dart';
+import 'package:proyecto_asistencia/models/attendance_record.dart';
+import 'package:proyecto_asistencia/models/course.dart';
+import 'package:proyecto_asistencia/models/course_session.dart';
+import 'package:proyecto_asistencia/models/incident.dart';
+import 'package:proyecto_asistencia/models/justification.dart';
+import 'package:proyecto_asistencia/models/teacher_snapshot.dart';
+import 'package:proyecto_asistencia/models/user_profile.dart';
+import 'package:proyecto_asistencia/services/teacher_backend.dart';
 
-/// Backend del docente en memoria para el modo demostración (solo
-/// depuración). Los nombres y códigos son de ejemplo y nada se guarda.
-class DemoTeacherBackend extends TeacherBackend {
-  DemoTeacherBackend({DateTime? now}) : _now = now ?? DateTime.now() {
+import 'fake_student_backend.dart' show watchValue;
+
+/// Backend del docente en memoria, solo para las pruebas automáticas.
+/// Los nombres y códigos son de ejemplo y nada se guarda.
+class FakeTeacherBackend extends TeacherBackend {
+  FakeTeacherBackend({DateTime? now}) : _now = now ?? DateTime.now() {
     _build();
   }
 
   static const uid = 'demo-teacher';
-  static const email = 'docente.demo@udla.edu.co';
-  static const name = 'Docente de demostración';
+  static const email = 'docente.prueba@udla.edu.co';
+  static const name = 'Docente de prueba';
 
   final DateTime _now;
   final _courses = <Course>[];
@@ -38,9 +39,6 @@ class DemoTeacherBackend extends TeacherBackend {
     faculty: '',
     bleEnabled: false,
   );
-
-  @override
-  bool get isDemo => true;
 
   TeacherSnapshot get _snapshot => TeacherSnapshot(
     courses: _courses,
@@ -78,7 +76,7 @@ class DemoTeacherBackend extends TeacherBackend {
     name: name,
     period: period,
     group: group,
-    teacherName: DemoTeacherBackend.name,
+    teacherName: FakeTeacherBackend.name,
     teacherUid: uid,
     room: room,
     schedule: schedule,
@@ -254,7 +252,7 @@ class DemoTeacherBackend extends TeacherBackend {
 
   @override
   Future<RosterLink> linkRoster(List<RosterEntry> roster) async {
-    // En la demostración todos los códigos se consideran registrados.
+    // En las pruebas todos los códigos se consideran registrados.
     return RosterLink(
       entries: [
         for (final e in roster) e.isLinked ? e : e.withUid('demo-${e.code}'),
@@ -384,5 +382,5 @@ class DemoTeacherBackend extends TeacherBackend {
   }
 
   @override
-  Future<void> signOut() async => DemoMode.exit();
+  Future<void> signOut() async {}
 }

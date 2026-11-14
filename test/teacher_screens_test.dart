@@ -10,21 +10,21 @@ import 'package:proyecto_asistencia/screens/teacher/tabs/teacher_profile_tab.dar
 import 'package:proyecto_asistencia/screens/teacher/tabs/teacher_reports_tab.dart';
 import 'package:proyecto_asistencia/screens/teacher/teacher_gate.dart';
 import 'package:proyecto_asistencia/screens/teacher/teacher_home_screen.dart';
-import 'package:proyecto_asistencia/services/demo_backend.dart';
 import 'package:proyecto_asistencia/services/teacher_backend.dart';
 
+import 'fakes/fake_student_backend.dart';
 import 'helpers.dart';
 import 'test_fonts.dart';
 
-Widget _home(DemoTeacherBackend b) => TeacherHomeScreen(
-  uid: DemoTeacherBackend.uid,
-  email: DemoTeacherBackend.email,
-  authDisplayName: DemoTeacherBackend.name,
+Widget _home(FakeTeacherBackend b) => TeacherHomeScreen(
+  uid: FakeTeacherBackend.uid,
+  email: FakeTeacherBackend.email,
+  authDisplayName: FakeTeacherBackend.name,
   backend: b,
 );
 
-/// Backend de demostración con un acceso distinto (para TeacherGate).
-class _AccessBackend extends DemoTeacherBackend {
+/// Backend de prueba con un acceso distinto (para TeacherGate).
+class _AccessBackend extends FakeTeacherBackend {
   _AccessBackend(this.access);
   final TeacherAccess access;
   @override
@@ -45,8 +45,8 @@ void main() {
         wrap(
           TeacherGate(
             uid: 'demo-teacher',
-            email: DemoTeacherBackend.email,
-            backend: DemoTeacherBackend(),
+            email: FakeTeacherBackend.email,
+            backend: FakeTeacherBackend(),
           ),
         ),
       );
@@ -91,15 +91,12 @@ void main() {
     });
   });
 
-  group('Vista del docente (demostración)', () {
+  group('Vista del docente (datos de prueba)', () {
     testWidgets('las 4 pestañas cargan sin errores', (tester) async {
       useTallView(tester);
-      await tester.pumpWidget(wrap(_home(DemoTeacherBackend())));
+      await tester.pumpWidget(wrap(_home(FakeTeacherBackend())));
       await pumpFrames(tester);
-      expect(
-        find.text('Modo demostración: datos de ejemplo, no se guardan.'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Modo demostración'), findsNothing);
       expect(find.text('Sesión en curso'), findsOneWidget);
       expect(find.text('Mis asignaturas'), findsOneWidget);
 
@@ -119,7 +116,7 @@ void main() {
 
       await tester.tap(find.text('Perfil'));
       await pumpFrames(tester);
-      expect(find.text(DemoTeacherBackend.email), findsOneWidget);
+      expect(find.text(FakeTeacherBackend.email), findsOneWidget);
       expect(find.text('Próximamente'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -128,7 +125,7 @@ void main() {
       'sesión en curso → finalizar → resumen → justificar inasistencia',
       (tester) async {
         useTallView(tester);
-        final backend = DemoTeacherBackend();
+        final backend = FakeTeacherBackend();
         await tester.pumpWidget(wrap(_home(backend)));
         await pumpFrames(tester);
 
@@ -164,7 +161,7 @@ void main() {
       tester,
     ) async {
       useTallView(tester);
-      await tester.pumpWidget(wrap(_home(DemoTeacherBackend())));
+      await tester.pumpWidget(wrap(_home(FakeTeacherBackend())));
       await pumpFrames(tester);
       // "Bases de Datos" no tiene sesión activa.
       await tester.tap(find.text('Iniciar asistencia').first);
@@ -181,7 +178,7 @@ void main() {
 
     testWidgets('crear clase con estudiante manual', (tester) async {
       useTallView(tester);
-      final backend = DemoTeacherBackend();
+      final backend = FakeTeacherBackend();
       await tester.pumpWidget(
         wrap(CourseFormScreen(backend: backend, teacherName: 'Docente')),
       );
@@ -222,7 +219,7 @@ void main() {
       await tester.pumpWidget(
         wrap(
           CourseFormScreen(
-            backend: DemoTeacherBackend(),
+            backend: FakeTeacherBackend(),
             teacherName: 'Docente',
           ),
         ),
@@ -256,7 +253,7 @@ void main() {
   group('Sin desbordamientos (320 dp, 130 %)', () {
     late TeacherState state;
     setUpAll(() async {
-      state = TeacherState.data(await DemoTeacherBackend().watch('x').first);
+      state = TeacherState.data(await FakeTeacherBackend().watch('x').first);
     });
 
     expectNoOverflow(
@@ -293,22 +290,22 @@ void main() {
       'Perfil',
       () => TeacherProfileTab(
         displayName: 'Docente',
-        email: DemoTeacherBackend.email,
+        email: FakeTeacherBackend.email,
         profile: null,
         state: state,
-        backend: DemoTeacherBackend(),
+        backend: FakeTeacherBackend(),
       ),
     );
     expectNoOverflow(
       'Formulario',
-      () => CourseFormScreen(backend: DemoTeacherBackend(), teacherName: 'D'),
+      () => CourseFormScreen(backend: FakeTeacherBackend(), teacherName: 'D'),
     );
     expectNoOverflow(
       'Resumen',
       () => SessionSummaryScreen(
         sessionId: state.data!.heldSessions().first.id,
         state: ValueNotifier(state),
-        backend: DemoTeacherBackend(),
+        backend: FakeTeacherBackend(),
         teacherName: 'D',
       ),
     );
@@ -321,14 +318,14 @@ void main() {
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
     final state = TeacherState.data(
-      (await tester.runAsync(() => DemoTeacherBackend().watch('x').first))!,
+      (await tester.runAsync(() => FakeTeacherBackend().watch('x').first))!,
     );
     await tester.pumpWidget(
       wrap(
         ActiveSessionScreen(
           sessionId: 'demo-open',
           state: ValueNotifier(state),
-          backend: DemoTeacherBackend(),
+          backend: FakeTeacherBackend(),
           onFinished: (_) {},
         ),
         textScale: 1.3,

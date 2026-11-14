@@ -10,6 +10,13 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // El dueño del correo abrió el enlace de verificación. Se exige a
+    // estudiantes y docentes para operar (no para crear el perfil, que se
+    // guarda justo al registrarse, antes de poder verificar).
+    function verified() {
+      return signedIn() && request.auth.token.email_verified == true;
+    }
+
     function institutionalEmail() {
       return request.auth.token.email.matches('.*@udla[.]edu[.]co$');
     }
@@ -123,7 +130,7 @@ service cloud.firestore {
     // (where students arrayContains uid); el docente, las suyas (where
     // teacherUid == uid). Solo el docente dueño las crea, edita o elimina.
     match /courses/{courseId} {
-      allow read: if signedIn()
+      allow read: if verified()
         && (request.auth.uid in resource.data.students
             || resource.data.get('teacherUid', '') == request.auth.uid);
       allow create: if isTeacher()
@@ -137,12 +144,12 @@ service cloud.firestore {
         && resource.data.get('teacherUid', '') == request.auth.uid;
     }
 
-    // Sesiones de asistencia. Lectura para usuarios autenticados (solo
+    // Sesiones de asistencia. Lectura para usuarios verificados (solo
     // contienen asignatura, estado y horas). El docente dueño de la
     // asignatura las abre (con una ventana de registro de hasta 4 h) y las
     // finaliza; no se pueden reabrir ni borrar.
     match /sessions/{sessionId} {
-      allow read: if signedIn();
+      allow read: if verified();
       allow create: if teachesCourse(request.resource.data.courseId)
         && request.resource.data.keys().hasOnly(
              ['courseId', 'teacherUid', 'status', 'startsAt', 'endsAt'])
@@ -183,6 +190,7 @@ service cloud.firestore {
         && (
           // Registro del estudiante durante la sesión.
           (request.resource.data.studentUid == request.auth.uid
+            && verified()
             && request.resource.data.method == 'session'
             && sessionDoc(request.resource.data.sessionId).data.status == 'open'
             && request.time < sessionDoc(request.resource.data.sessionId).data.get('endsAt', request.time + duration.value(1, 'd'))
@@ -217,7 +225,7 @@ service cloud.firestore {
     // Reportes de incidencias para el docente. El estudiante matriculado
     // los crea; el docente de la asignatura los consulta. No se editan.
     match /incidents/{incidentId} {
-      allow create: if signedIn()
+      allow create: if verified()
         && request.resource.data.keys().hasOnly(
              ['studentUid', 'courseId', 'sessionId', 'message', 'createdAt', 'teacherUid'])
         && request.resource.data.studentUid == request.auth.uid

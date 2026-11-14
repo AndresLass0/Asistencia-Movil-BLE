@@ -1,15 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/app_colors.dart';
 import '../models/user_profile.dart';
-import '../services/demo_backend.dart';
 import '../services/user_profile_service.dart';
+import 'email_verification_gate.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
 import 'teacher/teacher_gate.dart';
-import 'teacher/teacher_home_screen.dart';
 
 /// Decide la pantalla según el estado de la sesión.
 /// Firebase restaura la sesión guardada en el dispositivo automáticamente,
@@ -19,7 +17,8 @@ import 'teacher/teacher_home_screen.dart';
 /// también cuando cambia el perfil, p. ej. el nombre recién registrado.
 ///
 /// Es el **único** que alterna entre Login y la vista principal. Con sesión,
-/// [RoleGate] elige la vista del estudiante o la del docente.
+/// [EmailVerificationGate] exige el correo verificado y después [RoleGate]
+/// elige la vista del estudiante o la del docente.
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
@@ -32,38 +31,12 @@ class AuthGate extends StatelessWidget {
           return const _Loading();
         }
         final user = snapshot.data;
-        if (user != null) return RoleGate(user: user);
-        // Modo demostración (solo depuración): vistas reales con datos de
-        // ejemplo en memoria; "Cerrar sesión" vuelve al Login.
-        return ValueListenableBuilder<UserRole?>(
-          valueListenable: DemoMode.active,
-          builder: (context, role, _) {
-            if (kDebugMode && role == UserRole.teacher) {
-              final backend = DemoMode.teacherBackend;
-              if (backend != null) {
-                return TeacherHomeScreen(
-                  key: const ValueKey('demo-teacher'),
-                  uid: DemoTeacherBackend.uid,
-                  email: DemoTeacherBackend.email,
-                  authDisplayName: DemoTeacherBackend.name,
-                  backend: backend,
-                );
-              }
-            }
-            if (kDebugMode && role == UserRole.student) {
-              final backend = DemoMode.backend;
-              if (backend != null) {
-                return HomeScreen(
-                  key: const ValueKey('demo'),
-                  uid: DemoStudentBackend.uid,
-                  email: DemoStudentBackend.email,
-                  authDisplayName: DemoStudentBackend.name,
-                  backend: backend,
-                );
-              }
-            }
-            return const LoginScreen();
-          },
+        if (user == null) return const LoginScreen();
+        return EmailVerificationGate(
+          key: ValueKey('verify-${user.uid}'),
+          email: user.email ?? '',
+          verified: user.emailVerified,
+          child: RoleGate(user: user),
         );
       },
     );

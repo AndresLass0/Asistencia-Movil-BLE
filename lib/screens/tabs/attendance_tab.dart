@@ -89,7 +89,6 @@ class _AttendanceTabState extends State<AttendanceTab> {
                 course: course,
                 session: result.session!,
                 alreadyRegistered: result.alreadyRegistered,
-                demo: widget.backend.isDemo,
               )
             : AttendanceFailedScreen(
                 course: course,

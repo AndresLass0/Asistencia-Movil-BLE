@@ -23,7 +23,7 @@
 | INST-08 | ⏳ | "Estatuto Estudiantil" sigue mostrándose también a docentes; requiere confirmar el reglamento aplicable. |
 | INST-09 | 🟡 | Nombre visible "BioAsistencia" en Android, iOS, web y pubspec; README reescrito. Ícono e identificadores (`com.example…`) pendientes. |
 | INST-10 | — | Dominio `@udla.edu.co` coherente; ahora centralizado en `core/validators.dart`. |
-| FUN-01 | ✅ | Accesos demo solo en modo debug (decisión del equipo), con aviso honesto. |
+| FUN-01 | ✅ | Accesos demo eliminados (2026-11-14). |
 | FUN-02 | 🟡 | El rol se guarda en Firestore; subtítulo "Portal Docente" y chip de rol en Perfil. **No existe aún una vista docente** (requiere reglas de negocio). |
 | FUN-03 | ✅ | Campo "doble factor" deshabilitado con chip "Próximamente" (decisión del equipo). |
 | FUN-04 | ✅ | Cada éxito registra la asistencia (en memoria) y el Historial la muestra; textos aclaran que es local. |
@@ -74,7 +74,7 @@
 | TEC-10 | ⏳ | Fuente descargada en tiempo de ejecución; `cupertino_icons` sin usar (no se tocan dependencias sin motivo). |
 | TEC-11 | ✅ | Eliminado el parámetro sin uso. |
 | TEC-12 | ⏳ | Sin BLE real ni permisos. |
-| SEG-01 | 🟡 | Las reglas de Firestore exigen correo `@udla.edu.co` para crear perfiles y códigos. Firebase Auth sigue permitiendo crear cuentas de cualquier dominio por API y **no hay verificación de correo** (requiere autorización: cambia el flujo y la configuración). |
+| SEG-01 | 🟡 | Las reglas exigen correo `@udla.edu.co` para crear perfiles y códigos, y **correo verificado** (ambos roles, 2026-11-14) para leer asignaturas y sesiones, registrar asistencia e incidencias. Firebase Auth sigue permitiendo crear cuentas de cualquier dominio por API (no pueden operar sin verificar un buzón `@udla.edu.co`). |
 | SEG-02 | ⏳ | Firma de release e identificadores (requiere re-registro en Firebase). |
 | SEG-03 | ⏳ | Sin cambios en claves (no autorizado). |
 | SEG-04 | ⏳ | El proyecto sigue sin git (no se inicializó sin autorización). Copia de seguridad previa a los cambios hecha fuera del proyecto. |

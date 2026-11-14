@@ -32,9 +32,7 @@ Future<void> showIncidentDialog(
     if (context.mounted) {
       showAppMessage(
         context,
-        backend.isDemo
-            ? 'Modo demostración: la incidencia no se envió.'
-            : 'Incidencia enviada al docente de ${course.name}.',
+        'Incidencia enviada al docente de ${course.name}.',
       );
     }
   } on FirebaseException catch (e) {

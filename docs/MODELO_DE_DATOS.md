@@ -97,6 +97,7 @@ Las funciones `todayClassesOf` y `nextClassOf` las comparten ambos roles.
 
 ## Reglas principales
 
+- `verified()` = sesión iniciada **+ correo verificado**. Se exige para leer asignaturas y sesiones, registrar asistencia (estudiante) y reportar incidencias. No se exige para crear `users/{uid}` y `codes/{código}`, porque se guardan al registrarse, antes de poder abrir el enlace.
 - `isTeacher()` = sesión iniciada **+ correo verificado + correo en `teachers/` activo**.
 - El docente solo crea, edita o borra asignaturas con `teacherUid == su uid`, y solo abre y finaliza sesiones de esas asignaturas. Una sesión finalizada no se puede reabrir ni borrar.
 - El estudiante solo registra asistencia con la sesión `open`, antes de `endsAt`, matriculado y con `method: 'session'`. El id `{sessionId}_{uid}` impide duplicados.
@@ -111,7 +112,7 @@ Las funciones `todayClassesOf` y `nextClassOf` las comparten ambos roles.
 2. **Autoriza a un docente:** en *Firestore*, crea el documento `teachers/<correo@udla.edu.co>` (id = correo en minúsculas) con `active: true`.
 3. Ese docente se registra en la app eligiendo "Docente", **verifica su correo** con el enlace que recibe y entra en la vista del docente.
 4. El docente crea una clase y carga la lista (códigos de los estudiantes). Los estudiantes que ya tienen cuenta quedan vinculados.
-5. El docente pulsa "Iniciar asistencia". Los estudiantes registran su asistencia desde Inicio o Mis Clases; el docente los ve aparecer en la sesión activa.
+5. Cada estudiante se registra y **verifica su correo** antes de ver sus clases. El docente pulsa "Iniciar asistencia". Los estudiantes registran su asistencia desde Inicio o Mis Clases; el docente los ve aparecer en la sesión activa.
 6. El docente finaliza la sesión y revisa las inasistencias.
 
 Las asignaturas antiguas cargadas a mano siguen funcionando para el estudiante (sin `teacherUid` ningún docente las ve). Las consultas usan igualdades simples y `whereIn`, que funcionan con los índices automáticos. Si Firestore pide un índice compuesto, el error incluye el enlace para crearlo.
