@@ -184,43 +184,11 @@ class AcademicSnapshot {
   ];
 
   /// Clases de hoy según el horario, ordenadas por hora de inicio.
-  List<TodayClass> todayClasses(DateTime now) {
-    final minutes = now.hour * 60 + now.minute;
-    final result = <TodayClass>[];
-    for (final c in currentCourses) {
-      for (final s in c.schedule) {
-        if (s.weekday != now.weekday) continue;
-        final status = minutes < s.startMinutes
-            ? ClassTimeStatus.upcoming
-            : minutes < s.endMinutes
-            ? ClassTimeStatus.inProgress
-            : ClassTimeStatus.finished;
-        result.add(TodayClass(course: c, schedule: s, status: status));
-      }
-    }
-    return result
-      ..sort((a, b) => a.schedule.startMinutes - b.schedule.startMinutes);
-  }
+  List<TodayClass> todayClasses(DateTime now) =>
+      todayClassesOf(currentCourses, now);
 
   /// Próxima clase que aún no ha empezado (hasta 7 días adelante).
-  UpcomingClass? nextClass(DateTime now) {
-    UpcomingClass? best;
-    final today = DateTime(now.year, now.month, now.day);
-    for (final c in currentCourses) {
-      for (final s in c.schedule) {
-        var offset = (s.weekday - now.weekday) % 7;
-        var start = s.startOn(today.add(Duration(days: offset)));
-        if (!start.isAfter(now)) {
-          offset += 7;
-          start = s.startOn(today.add(Duration(days: offset)));
-        }
-        if (best == null || start.isBefore(best.startsAt)) {
-          best = UpcomingClass(course: c, schedule: s, startsAt: start);
-        }
-      }
-    }
-    return best;
-  }
+  UpcomingClass? nextClass(DateTime now) => nextClassOf(currentCourses, now);
 
   /// Asignatura que conviene usar para registrar asistencia ahora:
   /// primero una con sesión abierta pendiente; si no, una en horario.
@@ -232,6 +200,46 @@ class AcademicSnapshot {
     }
     return null;
   }
+}
+
+/// Franjas de hoy de [courses] según la hora, ordenadas por inicio.
+/// (Compartido por las vistas del estudiante y del docente.)
+List<TodayClass> todayClassesOf(Iterable<Course> courses, DateTime now) {
+  final minutes = now.hour * 60 + now.minute;
+  final result = <TodayClass>[];
+  for (final c in courses) {
+    for (final s in c.schedule) {
+      if (s.weekday != now.weekday) continue;
+      final status = minutes < s.startMinutes
+          ? ClassTimeStatus.upcoming
+          : minutes < s.endMinutes
+          ? ClassTimeStatus.inProgress
+          : ClassTimeStatus.finished;
+      result.add(TodayClass(course: c, schedule: s, status: status));
+    }
+  }
+  return result
+    ..sort((a, b) => a.schedule.startMinutes - b.schedule.startMinutes);
+}
+
+/// Próxima franja de [courses] que aún no ha empezado (hasta 7 días).
+UpcomingClass? nextClassOf(Iterable<Course> courses, DateTime now) {
+  UpcomingClass? best;
+  final today = DateTime(now.year, now.month, now.day);
+  for (final c in courses) {
+    for (final s in c.schedule) {
+      var offset = (s.weekday - now.weekday) % 7;
+      var start = s.startOn(today.add(Duration(days: offset)));
+      if (!start.isAfter(now)) {
+        offset += 7;
+        start = s.startOn(today.add(Duration(days: offset)));
+      }
+      if (best == null || start.isBefore(best.startsAt)) {
+        best = UpcomingClass(course: c, schedule: s, startsAt: start);
+      }
+    }
+  }
+  return best;
 }
 
 /// Estado de carga de los datos académicos que HomeScreen comparte con las

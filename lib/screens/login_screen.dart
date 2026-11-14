@@ -7,6 +7,7 @@ import '../core/app_routes.dart';
 import '../core/auth_messages.dart';
 import '../core/ui_messages.dart';
 import '../core/validators.dart';
+import '../models/user_profile.dart';
 import '../services/demo_backend.dart';
 import '../services/user_profile_service.dart';
 import '../widgets/app_link.dart';
@@ -38,13 +39,11 @@ class _LoginScreenState extends State<LoginScreen> {
     showAppMessage(context, text);
   }
 
-  /// Estudiante: modo demostración con datos de ejemplo en memoria (sin
-  /// Firebase). Docente: aún no existe la vista docente.
-  void _demoStudent() => DemoMode.enter();
+  /// Modo demostración (solo depuración): vistas reales con datos de
+  /// ejemplo en memoria, sin Firebase. AuthGate muestra la vista del rol.
+  void _demoStudent() => DemoMode.enter(UserRole.student);
 
-  void _demoTeacher() {
-    _showMessage('La vista docente aún no está disponible.');
-  }
+  void _demoTeacher() => DemoMode.enter(UserRole.teacher);
 
   Future<void> _login() async {
     if (_loading) return; // evita múltiples intentos simultáneos

@@ -113,6 +113,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
       created = credential.user;
       await created?.updateDisplayName(name);
 
+      // 2b) Docente: la institución debe haber autorizado su correo. (Las
+      // reglas también lo exigen; aquí se comprueba para dar un mensaje
+      // claro y no dejar una cuenta a medias.)
+      if (_role == UserRole.teacher &&
+          !await UserProfileService.isAuthorizedTeacher(email)) {
+        await _rollback(created);
+        _showMessage(
+          'Tu correo no está autorizado como docente. Solicita a la '
+          'administración de BioAsistencia que lo habilite y vuelve a '
+          'registrarte.',
+        );
+        return;
+      }
+
       // 3) Perfil académico + reserva del código (operación atómica).
       await UserProfileService.createProfile(
         created!.uid,
@@ -126,7 +140,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       );
 
-      // AuthGate (debajo de esta pantalla) ya muestra HomeScreen.
+      // Docente: correo verificado obligatorio para operar (reglas).
+      if (_role == UserRole.teacher) {
+        try {
+          await created.sendEmailVerification();
+          _showMessage(
+            'Cuenta creada. Te enviamos un correo para verificar tu '
+            'dirección antes de usar las funciones de docente.',
+          );
+        } catch (_) {
+          // Se podrá reenviar desde la pantalla de verificación.
+        }
+      }
+
+      // AuthGate (debajo de esta pantalla) ya muestra la vista del rol.
       if (!mounted) return;
       Navigator.popUntil(context, (route) => route.isFirst);
     } on FirebaseAuthException catch (e) {
@@ -185,6 +212,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
               role: _role,
               onChanged: (v) => setState(() => _role = v),
             ),
+            if (_role == UserRole.teacher) ...[
+              const SizedBox(height: 10),
+              const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, size: 18, color: AppColors.primary),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Las cuentas docentes requieren que la institución haya '
+                      'autorizado tu correo y que lo verifiques.',
+                      style: TextStyle(fontSize: 12.5, color: AppColors.hint),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 18),
             AppTextField(
               controller: _nameCtrl,

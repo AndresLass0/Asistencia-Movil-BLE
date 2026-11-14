@@ -1,60 +1,77 @@
 # Estado del proyecto
 
-> Actualizado el 2026-11-01, tras implementar las vistas del estudiante. Documentos: [ARQUITECTURA](ARQUITECTURA.md) · [MODELO_DE_DATOS](MODELO_DE_DATOS.md) · [PANTALLAS_Y_FLUJOS](PANTALLAS_Y_FLUJOS.md) · [AUDITORIA_DE_CONSISTENCIA](AUDITORIA_DE_CONSISTENCIA.md) · [PLAN_DE_CORRECCIONES](PLAN_DE_CORRECCIONES.md)
+> Actualizado el 2026-11-01, tras implementar la vista del docente. Documentos: [ARQUITECTURA](ARQUITECTURA.md) · [MODELO_DE_DATOS](MODELO_DE_DATOS.md) · [PANTALLAS_Y_FLUJOS](PANTALLAS_Y_FLUJOS.md) · [AUDITORIA_DE_CONSISTENCIA](AUDITORIA_DE_CONSISTENCIA.md) · [PLAN_DE_CORRECCIONES](PLAN_DE_CORRECCIONES.md)
 
 ## 1. Resumen
 
-BioAsistencia (UDLA) ya tiene una **experiencia de estudiante completa conectada a Firestore**: Inicio, Mis Clases, detalle de asignatura, registro de asistencia, comprobante, historial con PDF y perfil. La asistencia se valida con la **sesión abierta por el docente**, en el servidor y en las reglas. Ya no queda ningún dato simulado (`DemoData` y la simulación de 4 s se eliminaron).
+BioAsistencia (UDLA) tiene dos vistas conectadas a Firestore:
+- **Estudiante:** Inicio, Mis Clases, detalle, registro de asistencia, comprobante, historial con PDF y perfil.
+- **Docente:** clases (crear, editar, eliminar, cargar la lista desde Excel/CSV), sesión de asistencia con ventana de registro y presentes en vivo, resumen con revisión de inasistencias, historial, reportes y perfil, con exportación a PDF y Excel.
 
-## 2. Qué funciona
+La asistencia se valida con la **sesión que abre el docente** y su ventana de registro, en el servidor y en las reglas. **La verificación por proximidad (BLE) no está implementada.**
 
-- Autenticación con correo UDLA o código; registro con perfil y código único; recuperación; cierre de sesión.
-- Lectura en vivo de asignaturas, sesiones y asistencias del estudiante.
-- Registro de asistencia sin duplicados, con hora del servidor.
-- Estadísticas por asignatura, periodo e histórico.
-- Alertas dentro de la app (sesión abierta, riesgo por margen), campana e indicador de conexión.
-- Reporte de incidencias, PDF del historial y edición de programa, semestre, sede y preferencias.
-- Modo demostración del estudiante (solo depuración) con datos de ejemplo en memoria, para revisar las vistas sin Firestore.
+## 2. Estado por funcionalidad
 
-## 3. Lo que depende de algo externo o falta
+| Funcionalidad | Implementado | Probado automáticamente | Pendiente de validar |
+|---|---|---|---|
+| Login, registro, recuperación, cierre de sesión | ✅ | ✅ (sin Firebase) | En dispositivo |
+| Vistas del estudiante | ✅ | ✅ | Con datos reales |
+| Autorización de docentes (`teachers` + correo verificado) | ✅ app y reglas | ✅ pantallas de acceso | **Reglas en el servidor** |
+| Crear / editar / eliminar clase | ✅ | ✅ (demostración) | Escrituras reales |
+| Importar lista .xlsx/.csv y plantilla | ✅ | ✅ lectura/escritura de archivos | Selector de archivos en el dispositivo |
+| Vincular códigos con cuentas | ✅ | ✅ (demostración) | Con cuentas reales |
+| Abrir sesión con duración, cierre automático, finalizar | ✅ | ✅ | Reglas en el servidor |
+| Presentes en vivo, excepción manual | ✅ | ✅ | Con varios dispositivos |
+| Justificar / confirmar inasistencias | ✅ | ✅ | Escrituras reales |
+| Historial, reportes, riesgo, incidencias | ✅ | ✅ cálculos y pantallas | Con datos reales |
+| PDF y Excel del docente | ✅ | ✅ generación del .xlsx | Diálogos nativos de guardar/compartir |
+| Modo demostración (estudiante y docente, solo debug) | ✅ | ✅ | — |
+| **BLE (emisión y detección)** | ❌ | — | Requiere protocolo y hardware |
+| Notificaciones push | ❌ | — | Decisión pendiente |
 
-| Tema | Estado |
+## 3. Lo que depende de algo externo
+
+| Tema | Qué hacer |
 |---|---|
-| Configuración de Firestore | **Hay que crear la base y publicar `firestore.rules`** (no hay CLI de Firebase en este equipo y no se publicó nada) |
-| Asignaturas y sesiones | La app no las crea: se cargan desde la consola (guía en MODELO_DE_DATOS) o desde una futura **vista docente** |
-| Verificación de proximidad (BLE) | No implementada: cualquier matriculado puede registrarse con la sesión abierta |
-| Notificaciones push | No: las alertas solo funcionan con la app abierta |
-| Vista docente | No existe |
-| Verificación de correo, firma de release, identificadores, logo oficial | Pendientes (ver PLAN) |
+| Firestore | Crear la base y **publicar `firestore.rules`** (no se publicó nada desde aquí: no hay CLI de Firebase) |
+| Docentes | Crear `teachers/<correo>` con `active: true` en la consola por cada docente autorizado |
+| Correo de verificación | Usa la plantilla por defecto de Firebase Auth (se puede personalizar en la consola) |
+| Asignaturas | Las crea el docente en la app. Las cargadas a mano antes siguen funcionando para el estudiante, pero ningún docente las ve (no tienen `teacherUid`) |
 
-## 4. Validaciones
+## 4. Validaciones realizadas
 
 | Validación | Resultado |
 |---|---|
 | `flutter analyze --no-pub` | **No issues found** |
-| `flutter test --no-pub` | **65/65 superadas** (incluye el modo demostración): lógica, cálculos académicos, PDF, autenticación, 5 pestañas, detalle, comprobante, fallo y desbordamientos en 320 dp con texto al 130 %; sin toques fallidos |
-| `flutter build apk --debug` | **Compila** (`app-debug.apk`). El primer intento falló sin que se capturara la causa; los dos siguientes terminaron bien |
-| Revisión visual | Capturas de las 8 pantallas con datos de ejemplo, comparadas con los diseños. Corregidos: título cortado en la cabecera, títulos de sección partidos, "Salón Aula", chip de sesión recortado y tarjeta de Bluetooth apretada. Segunda revisión: textos que sugerían BLE activo (DIS-18) |
+| `flutter test --no-pub` | **95/95 superadas**: lógica y cálculos de ambos roles, archivos .xlsx/.csv, acceso del docente (autorizado, no autorizado, sin verificar), recorrido del docente en demostración (finalizar sesión, excepción manual, justificar, iniciar con duración, crear clase, validaciones) y desbordamientos en 320 dp con texto al 130 % |
+| `flutter build apk --debug` | **Compila** (incluye `file_picker`) |
+| Revisión visual | Capturas de las pantallas del docente con datos de ejemplo. Corregidos: desplegable de periodo desbordado, "1 faltas", botón partido en dos líneas y datos de ejemplo con riesgo exagerado |
 | Búsqueda institucional | Sin "UN", "SIA", "UNAL", "Nacional", "Amazonía" ni "80 %" en `lib/` |
 
 **No verificado:**
-- Las reglas de Firestore en el servidor (sin emulador ni CLI).
-- Lecturas y escrituras reales contra Firebase.
-- La app en un dispositivo o emulador con una cuenta real.
-- El diálogo nativo de `printing`.
-- La fuente Plus Jakarta Sans en las capturas.
+- Las reglas de Firestore en el servidor (sin emulador ni CLI). En particular: el registro de docentes, `isTeacher()` y las consultas del docente.
+- Lecturas y escrituras reales, el envío del correo de verificación y la vinculación de códigos con cuentas reales.
+- La app en un dispositivo o emulador; los diálogos nativos (selector de archivos, guardar Excel, compartir PDF).
+- Varios dispositivos a la vez (docente y estudiantes en la misma sesión).
 
-## 5. Dudas abiertas
+## 5. Limitaciones conocidas
 
-1. ¿Quién abre y cierra las sesiones (vista docente en la app o un sistema externo)?
-2. ¿Cómo será la verificación de proximidad (protocolo BLE, hardware del docente)?
-3. ¿Hay reglas institucionales de faltas (para no depender de `maxAbsences` por asignatura)?
-4. ¿Hay una fuente oficial de programa, semestre y sede (hoy los registra el usuario)?
-5. ¿Hacen falta notificaciones push (FCM)?
-6. Pendientes anteriores: facultades, reglamento, política de datos, logo, verificación de correo y git.
+- **Sin BLE:** cualquier estudiante matriculado puede registrarse durante la ventana, aunque no esté en el aula. La pantalla de calibración BLE del diseño no se implementó.
+- Los estudiantes sin cuenta en BioAsistencia no pueden registrarse ni recibir una asistencia manual. El docente debe volver a guardar la clase cuando se registren.
+- `endsAt` se calcula con el reloj del teléfono del docente: si está muy atrasado respecto al servidor, las reglas rechazan la sesión.
+- Las justificaciones no cambian los porcentajes (no hay una regla institucional confirmada).
+- No hay notificaciones push: las alertas solo funcionan con la app abierta.
 
-## 6. Próximos pasos
+## 6. Dudas abiertas
 
-1. Publicar las reglas, cargar datos de prueba y recorrer F1–F5 en un dispositivo.
-2. Definir y construir la vista docente (abrir y cerrar sesiones).
-3. Implementar la verificación BLE cuando haya un protocolo definido.
+1. Protocolo y hardware BLE (¿emite el teléfono del docente o una baliza en el aula?).
+2. ¿Las faltas justificadas deben descontarse? ¿Hay un reglamento de faltas global?
+3. ¿Quién administra la lista de docentes autorizados y cómo se solicita?
+4. ¿Hacen falta notificaciones push (FCM)?
+5. Pendientes anteriores: facultades, reglamento, política de datos, logo, firma de release.
+
+## 7. Próximos pasos
+
+1. Publicar las reglas, autorizar un docente de prueba y recorrer D1–D3 y F1 en dos dispositivos.
+2. Definir el protocolo BLE e implementarlo.
+3. Firma de release e identificadores definitivos.

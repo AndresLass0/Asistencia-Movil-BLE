@@ -8,34 +8,50 @@ import '../models/course.dart';
 import '../models/course_session.dart';
 import '../models/user_profile.dart';
 import 'attendance_service.dart';
+import 'demo_teacher_backend.dart';
 import 'student_backend.dart';
 
-/// Modo demostración del Login ("Entrar como Estudiante").
+export 'demo_teacher_backend.dart';
+
+/// Modo demostración del Login ("Entrar como Estudiante" / "Entrar como
+/// Docente").
 ///
 /// Solo existe en compilaciones de depuración (`kDebugMode`). Muestra las
-/// vistas reales del estudiante con **datos de ejemplo en memoria**: nada se
-/// lee ni se escribe en Firebase y todo se pierde al salir. La interfaz lo
-/// indica con un aviso visible.
+/// vistas reales con **datos de ejemplo en memoria**: nada se lee ni se
+/// escribe en Firebase y todo se pierde al salir. La interfaz lo indica con
+/// un aviso visible.
 class DemoMode {
   DemoMode._();
 
-  /// AuthGate lo escucha para mostrar la vista de demostración.
-  static final active = ValueNotifier<bool>(false);
+  /// Rol de la demostración en curso (null = no hay). AuthGate lo escucha.
+  static final active = ValueNotifier<UserRole?>(null);
 
   /// Datos de la entrada actual; se descartan al salir.
   static DemoStudentBackend? backend;
+  static DemoTeacherBackend? teacherBackend;
 
-  static void enter() {
+  static void enter([UserRole role = UserRole.student]) {
     if (!kDebugMode) return;
-    backend = DemoStudentBackend();
-    active.value = true;
+    backend = role == UserRole.student ? DemoStudentBackend() : null;
+    teacherBackend = role == UserRole.teacher ? DemoTeacherBackend() : null;
+    active.value = role;
   }
 
   static void exit() {
-    active.value = false;
+    active.value = null;
     backend = null;
+    teacherBackend = null;
   }
 }
+
+/// Emite el valor actual al suscribirse y después cada cambio. La
+/// suscripción es síncrona, así no se pierde ninguna actualización.
+Stream<T> watchValue<T>(T Function() current, Stream<T> changes) =>
+    Stream.multi((c) {
+      c.add(current());
+      final sub = changes.listen(c.add);
+      c.onCancel = sub.cancel;
+    });
 
 /// Backend en memoria para el modo demostración.
 class DemoStudentBackend extends StudentBackend {
@@ -226,11 +242,7 @@ class DemoStudentBackend extends StudentBackend {
   /// Emite el valor actual al suscribirse y después cada cambio (la
   /// suscripción es síncrona, así no se pierde ninguna actualización).
   static Stream<T> _watch<T>(T Function() current, Stream<T> changes) =>
-      Stream.multi((c) {
-        c.add(current());
-        final sub = changes.listen(c.add);
-        c.onCancel = sub.cancel;
-      });
+      watchValue(current, changes);
 
   @override
   Stream<AcademicSnapshot> watchAcademic(String uid) =>
@@ -270,6 +282,7 @@ class DemoStudentBackend extends StudentBackend {
     required String courseId,
     required String message,
     String? sessionId,
+    String teacherUid = '',
   }) async {
     // En demostración no se envía nada.
   }

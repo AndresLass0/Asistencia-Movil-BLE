@@ -1,21 +1,35 @@
 # Pantallas y flujos
 
-> Actualizado el 2026-11-01, tras implementar las vistas del estudiante (diseños en `docs/images_views_estudiante/`).
+> Actualizado el 2026-11-01: vistas del estudiante (`docs/images_views_estudiante/`) y del docente (`docs/images_views_docente/`).
+> Esas carpetas de diseño son material de referencia local y no se versionan en el repositorio.
 > Revisión visual: capturas renderizadas desde pruebas de widgets (Roboto en lugar de Plus Jakarta Sans). **No** se probó en un dispositivo con datos reales de Firestore.
 
 ## 1. Mapa
 
 ```
 AuthGate ─┬─ sin sesión → Login ─┬─ push → Registro (/register)
-          │                      └─ push → Recuperar (/forgot-password)
-          └─ con sesión → HomeScreen
-                 ├─ [0] Inicio ──────────┐
-                 ├─ [1] Mis Clases ──────┼─ "Ver detalle" / tarjeta → push Detalle de asignatura
-                 ├─ [2] Asistencia ◀─────┘  (botones "Registrar asistencia", campana, alerta)
-                 │      └─ push → Comprobante | Señal no encontrada ─ pop(AttendanceAction)
-                 ├─ [3] Historial (Mi progreso académico) ── "Descargar PDF"
-                 └─ [4] Perfil ── Editar información · alertas · Cerrar sesión → Login
+          │                      ├─ push → Recuperar (/forgot-password)
+          │                      └─ (debug) Demostración → Estudiante | Docente
+          └─ con sesión → RoleGate (lee users/{uid}.role)
+                 ├─ estudiante (o sin perfil) → HomeScreen
+                 │      ├─ [0] Inicio ──────────┐
+                 │      ├─ [1] Mis Clases ──────┼─ push Detalle de asignatura
+                 │      ├─ [2] Asistencia ◀─────┘
+                 │      │      └─ push → Comprobante | Señal no encontrada
+                 │      ├─ [3] Historial ── PDF
+                 │      └─ [4] Perfil ── Cerrar sesión
+                 └─ docente → TeacherGate (autorizado + correo verificado)
+                        ├─ no autorizado / sin verificar → pantalla de aviso (reintentar, cerrar sesión)
+                        └─ TeacherHomeScreen
+                               ├─ [0] Clases ── Iniciar asistencia → hoja de duración → push Sesión activa
+                               │        │                                   └─ Finalizar → Resumen (reemplaza)
+                               │        └─ Crear / Editar clase (push) · Eliminar
+                               ├─ [1] Historial ── detalle, PDF, Excel, revisar inasistencias (push Resumen)
+                               ├─ [2] Reportes ── periodo, consolidado PDF y Excel
+                               └─ [3] Perfil ── Cerrar sesión
 ```
+
+Solo hay dos rutas con nombre (`/register`, `/forgot-password`). Todo lo demás se abre con `push` o cambiando de pestaña.
 
 ## 2. Autenticación (sin cambios en esta fase)
 
@@ -61,7 +75,36 @@ Promedio histórico, número de periodos, clases totales, asistidas e inasistenc
 ### [4] Perfil — `tabs/profile_tab.dart`
 Avatar, nombre, correo, rol, código, nivel académico (semestre o "Sin registrar") e índice presencial (% histórico). La información académica (programa, facultad y sede) se edita desde **Editar**, excepto la facultad. Tarjeta de Bluetooth LE con "Próximamente" y un interruptor de preferencia. Interruptores **Sesiones de aula en vivo** (alerta dentro de la app) y **Alerta de riesgo presencial**. Cerrar sesión con confirmación.
 
-## 4. Flujos
+## 4. Vistas del docente
+
+Todas usan datos de `TeacherBackend` (Firestore real o demostración) y muestran estados de carga, error y vacío. Diseño de referencia y decisiones: AUDITORIA §9.
+
+### Acceso — `teacher/teacher_gate.dart`
+Comprueba `teachers/{correo}` y el correo verificado. Avisos: "Cuenta docente pendiente de autorización" (Volver a comprobar) y "Verifica tu correo" (Reenviar correo, Ya lo verifiqué). Ambos con "Cerrar sesión".
+
+### [0] Clases — `teacher/tabs/teacher_classes_tab.dart`
+"Mis clases" + **Crear clase**; tarjeta del docente con el periodo. Tarjeta destacada: **sesión en curso** (presentes y hora de cierre, "Ver sesión en curso") o la clase en horario / próxima con **Iniciar asistencia**. Resumen del periodo (estudiantes, asistencia promedio, sesiones). "Mis asignaturas": grupo, aula, horario, %, inscritos (y cuántos sin cuenta), Iniciar asistencia / Ver sesión, Editar y Eliminar (bloqueados con la sesión activa; eliminar solo sin sesiones).
+**Hoja "Configurar duración":** 5/10/15/20 min (preseleccionada la de la clase), hora de inicio y de cierre, aviso si nadie de la lista tiene cuenta.
+
+### Crear / Editar clase — `teacher/course_form_screen.dart`
+Nombre*, código, grupo, periodo* (AAAA-1/2), aula y edificio; franjas horarias (día + inicio y fin); **lista de estudiantes**: cargar .xlsx/.csv (código, nombre, correo; con o sin encabezados; informa filas omitidas), descargar plantilla .xlsx, añadir a mano, quitar; duración predeterminada del registro; faltas permitidas (opcional). Al guardar vincula los códigos con cuentas existentes e informa cuántos quedaron vinculados.
+
+### Sesión activa — `teacher/active_session_screen.dart`
+Estado (registro abierto / tiempo cumplido / finalizada), cuenta atrás, hora de inicio, aula, aviso de que no hay verificación por proximidad, progreso presentes/total. Lista con búsqueda: **Presentes** (hora; "Desde la app" o "Registro manual") y **Pendientes** ("Marcar presente" con confirmación, o "Sin cuenta en BioAsistencia"). **Finalizar asistencia** con confirmación → Resumen.
+
+### Resumen de asistencia — `teacher/session_summary_screen.dart`
+Estado, asignatura, fecha y horas, presentes (%), ausentes, total. **Ausentes** con Justificar / Confirmar falta (cambiable). Presentes plegables. Descargar planilla PDF, planilla Excel y "Consultar historial de clases" (pestaña 1).
+
+### [1] Historial — `teacher/tabs/teacher_history_tab.dart`
+Filtro por mes y por asignatura; sesiones, asistencia promedio y estudiantes; tarjeta por sesión (fecha, horas, duración, aula, presentes/ausentes) con planilla desplegable, PDF, Excel y "Revisar inasistencias".
+
+### [2] Reportes — `teacher/tabs/teacher_reports_tab.dart`
+Selector de periodo (o todos). Resumen (%, estudiantes, sesiones, en riesgo), barras de asistencia por mes, tarjeta por asignatura (%, presentes por sesión, en riesgo, estudiantes desplegables), **alerta temprana**, **incidencias reportadas** y exportación del consolidado (Excel y PDF).
+
+### [3] Perfil — `teacher/tabs/teacher_profile_tab.dart`
+Nombre, correo, rol, código, facultad y sede ("Sin registrar" si faltan); resumen del periodo; cursos a cargo; "Proximidad (Bluetooth) · Próximamente"; Cerrar sesión.
+
+## 5. Flujos
 
 | Flujo | Pasos |
 |---|---|
@@ -70,3 +113,8 @@ Avatar, nombre, correo, rol, código, nivel académico (semestre o "Sin registra
 | F3 Reportar | Fallo o Detalle → Reportar incidencia → `incidents` |
 | F4 Perfil | Editar programa, semestre y sede · alertas · BLE (preferencia) |
 | F5 Cerrar sesión | Perfil → confirmar → Login |
+| D1 Acceso docente | Administración crea `teachers/{correo}` → registro como Docente → verificar correo → TeacherGate → Clases |
+| D2 Crear clase | Clases → Crear clase → datos, horario, lista (Excel/CSV o manual) → Guardar (vincula códigos) |
+| D3 Tomar asistencia | Clases → Iniciar asistencia → duración → Sesión activa (presentes en vivo, excepciones) → Finalizar → Resumen → justificar o confirmar → PDF/Excel |
+| D4 Consultar | Historial (por mes y asignatura) · Reportes (periodo, riesgo, incidencias, consolidado) |
+| D5 Demostración | Login (debug) → "Entrar como Docente" → datos de ejemplo en memoria |

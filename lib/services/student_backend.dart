@@ -26,6 +26,7 @@ abstract class StudentBackend {
     required String courseId,
     required String message,
     String? sessionId,
+    String teacherUid = '',
   });
   Future<void> updateAcademicInfo(
     String uid, {
@@ -60,11 +61,13 @@ class FirebaseStudentBackend extends StudentBackend {
     required String courseId,
     required String message,
     String? sessionId,
+    String teacherUid = '',
   }) => AttendanceService.reportIncident(
     uid: uid,
     courseId: courseId,
     message: message,
     sessionId: sessionId,
+    teacherUid: teacherUid,
   );
 
   @override

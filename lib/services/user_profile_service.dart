@@ -27,6 +27,17 @@ class UserProfileService {
   static Future<bool> isCodeTaken(String code) async =>
       (await _codes.doc(code.trim()).get()).exists;
 
+  /// true si la institución autorizó ese correo como docente
+  /// (`teachers/{correo}`, se administra desde la consola). Requiere que el
+  /// usuario haya iniciado sesión con ese mismo correo.
+  static Future<bool> isAuthorizedTeacher(String email) async {
+    final doc = await _db
+        .collection('teachers')
+        .doc(email.trim().toLowerCase())
+        .get(const GetOptions(source: Source.server));
+    return doc.exists && doc.data()?['active'] != false;
+  }
+
   /// Guarda el perfil y reserva el código en una sola operación atómica.
   /// Falla (permission-denied) si el código ya estaba reservado.
   static Future<void> createProfile(String uid, UserProfile profile) {

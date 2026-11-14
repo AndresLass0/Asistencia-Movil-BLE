@@ -71,12 +71,15 @@ class AttendanceService {
           .where('status', isEqualTo: 'open')
           .get(const GetOptions(source: Source.server))
           .timeout(_timeout);
-      if (snap.docs.isEmpty) {
+      // Solo cuentan las sesiones dentro de su ventana de registro.
+      final sessions =
+          [for (final d in snap.docs) CourseSession.fromMap(d.id, d.data())]
+              .where((s) => s.isOpen)
+              .toList()
+            ..sort((a, b) => b.startsAt.compareTo(a.startsAt));
+      if (sessions.isEmpty) {
         return const AttendanceResult.failure(AttendanceFailure.noOpenSession);
       }
-      final sessions = [
-        for (final d in snap.docs) CourseSession.fromMap(d.id, d.data()),
-      ]..sort((a, b) => b.startsAt.compareTo(a.startsAt));
       final session = sessions.first;
 
       final ref = _db
@@ -98,6 +101,8 @@ class AttendanceService {
             'studentUid': uid,
             'courseId': course.id,
             'sessionId': session.id,
+            'teacherUid': course.teacherUid,
+            'method': AttendanceMethod.session.id,
             'registeredAt': FieldValue.serverTimestamp(),
           })
           .timeout(_timeout);
@@ -125,12 +130,14 @@ class AttendanceService {
     required String courseId,
     required String message,
     String? sessionId,
+    String teacherUid = '',
   }) => _db
       .collection('incidents')
       .add({
         'studentUid': uid,
         'courseId': courseId,
         'sessionId': ?sessionId,
+        'teacherUid': teacherUid,
         'message': message.trim(),
         'createdAt': FieldValue.serverTimestamp(),
       })

@@ -46,3 +46,20 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Kotlin (caché local de Gradle)
+android/.kotlin/
+
+# Variables de entorno y secretos locales
+.env
+.env.*
+*.env
+key.properties
+**/*.keystore
+**/*.jks
+
+# Material auxiliar local (no forma parte del proyecto)
+CLAUDE.md
+.claude/
+docs/images_views_docente/
+docs/images_views_estudiante/

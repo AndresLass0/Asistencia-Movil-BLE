@@ -232,3 +232,28 @@ Diseños revisados: las 7 imágenes de `docs/images_views_estudiante/`.
 | DIS-16 | Íconos por asignatura (terminal, red, base de datos) sin dato que los respalde | Ícono genérico de asignatura |
 | DIS-17 | "Asistencia registrada" sin persistencia (antes en memoria) | Persistida en `attendance` con reglas (sesión abierta, matrícula, sin duplicados) |
 | DIS-18 | Consejos de "Señal no encontrada" sobre Bluetooth y acercarse al docente; "Sintonía completada"; textos de Registro que presentaban BLE como activo | Sustituidos por consejos reales (conexión, asignatura correcta, confirmar con el docente), "Registro completado sin novedades" y BLE como "próxima versión" (revisión del 2026-11-01) |
+
+## 9. Inconsistencias de los diseños del docente (2026-11-01)
+
+Diseños en `docs/images_views_docente/` (9 HTML). Todos se revisaron completos: texto, botones, formularios y scripts.
+
+| ID | Inconsistencia en el diseño | Resolución |
+|---|---|---|
+| DOC-01 | "BioAsistencia UN", "UNAL", "SIA", "Universidad Nacional", "Sede Bogotá/Amazonia/Leticia", "Vicerrectoría Académica", "DNTI", correos `@unal.edu.co` | No se copiaron. Identidad UDLA; sede y facultad del perfil o "Sin registrar" |
+| DOC-02 | **Cualquiera podía elegir "Docente" al registrarse** y las reglas lo aceptaban sin verificación (hallazgo del código, no del diseño) | Lista `teachers/{correo}` administrada por la institución + correo verificado; `isTeacher()` en las reglas; registro docente rechazado si el correo no está autorizado |
+| DOC-03 | "Iniciar asistencia BLE", "Baliza transmitiendo", "BLE confirmado", "Resonancia", radar | No hay BLE. Se inicia una **sesión con ventana de registro**; los textos dicen que la verificación por proximidad no está disponible |
+| DOC-04 | Contadores simulados con `setInterval` (19→27 detectados), "Consolidando…" con `setTimeout` | Datos en vivo de Firestore (`attendance`) y operaciones reales |
+| DOC-05 | "Acta criptográfica firmada", "Sello PKI", "Token Ed25519 rodante", "Firma digital", "Validación biométrica (huella/FaceID)" | Retirados: no existen. Los PDF dicen que no reemplazan certificaciones oficiales |
+| DOC-06 | "Sincronizar con SIA", "Sincronizado SIA", "Firebase Cloud" | Retirados (no hay integración académica) |
+| DOC-07 | "Meta reglamentaria UNAL del 80 %", "Meta sede 85 %", ">15 % riesgo estatutario", "Alertas al superar 10 %" | No confirmadas: el riesgo usa `maxAbsences` por asignatura (igual que el estudiante) |
+| DOC-08 | "Notificar" a estudiantes en riesgo y "Pulso háptico a 18 dispositivos" | Sin canal de notificaciones: no se implementan |
+| DOC-09 | Pantalla "Preferencias y calibración BLE" (potencia Tx, RSSI, anti-spoofing, filtro de muros, telemetría) | No implementada; en Perfil se muestra "Proximidad (Bluetooth) · Próximamente" |
+| DOC-10 | Dos barras inferiores distintas (4 y 5 pestañas, con "Sesión") | Una barra de 4: Clases · Historial · Reportes · Perfil. La sesión activa se abre desde Clases y la campana |
+| DOC-11 | Dos pantallas de cierre ("Resumen y cierre" y "Cierre y resumen") con datos solapados | Unificadas en `SessionSummaryScreen` |
+| DOC-12 | "Guardar como borrador (sin alumnos)" | Se puede crear la clase sin estudiantes ("Crear clase sin estudiantes") y completarla al editar |
+| DOC-13 | "Espacio físico" como lista cerrada de edificios inventados | Campos libres Aula y Edificio |
+| DOC-14 | "Margen de cortesía 0–30 min" y "Auto-cierre al terminar el bloque" | Se convierten en la **duración del registro** (5/10/15/20 min) con cierre automático real (`endsAt`, exigido en las reglas) |
+| DOC-15 | Logout en el ícono de Perfil de la barra (confunde navegación y cierre) | Perfil es una pestaña; "Cerrar sesión" con confirmación |
+| DOC-16 | Nombres, códigos y cifras de ejemplo (Carlos Restrepo, 28 inscritos, 91.8 %…) | Solo datos reales; el modo demostración usa "Estudiante de ejemplo NN" y lo indica |
+| DOC-17 | "Justificar/Notificar" en la alerta de riesgo sin sesión asociada | La justificación se hace por sesión (Resumen). En Reportes la alerta es informativa |
+| DOC-18 | Incidencias del estudiante ("Reportar al docente") que nadie podía leer | El docente las ve en Reportes (`incidents.teacherUid`) |

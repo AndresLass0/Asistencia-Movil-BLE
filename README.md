@@ -1,6 +1,6 @@
 # BioAsistencia — Universidad de la Amazonia (UDLA)
 
-Aplicación Flutter para registrar la asistencia a clase. Estado actual: autenticación, perfiles, asignaturas, sesiones y asistencias reales en Firebase; la asistencia se valida con la sesión abierta por el docente (la verificación por proximidad BLE aún no está implementada). Ver [`docs/ESTADO_DEL_PROYECTO.md`](docs/ESTADO_DEL_PROYECTO.md).
+Aplicación Flutter para registrar la asistencia a clase. Estado actual: vistas de estudiante y docente conectadas a Firebase (autenticación, perfiles, asignaturas, sesiones, asistencias, revisiones e incidencias). La asistencia se valida con la sesión que abre el docente y su tiempo de registro; la verificación por proximidad BLE aún no está implementada. Ver [`docs/ESTADO_DEL_PROYECTO.md`](docs/ESTADO_DEL_PROYECTO.md).
 
 ## Requisitos
 
@@ -16,7 +16,8 @@ Aplicación Flutter para registrar la asistencia a clase. Estado actual: autenti
 
 Sin los pasos 2 y 3, el registro falla con *permiso denegado* (la cuenta creada se revierte automáticamente) y el inicio de sesión con código no funciona; el inicio con correo sí.
 
-4. Carga asignaturas y sesiones de prueba siguiendo [`docs/MODELO_DE_DATOS.md`](docs/MODELO_DE_DATOS.md). La app no las crea: sin datos, las pantallas del estudiante muestran estados vacíos.
+4. **Autoriza a los docentes:** en *Firestore*, crea un documento `teachers/<correo@udla.edu.co>` (id = correo en minúsculas) con `active: true` por cada docente. Sin él, el registro como docente se rechaza.
+5. El docente se registra en la app como "Docente", verifica su correo y crea sus clases (puede cargar la lista desde Excel o CSV). Detalles en [`docs/MODELO_DE_DATOS.md`](docs/MODELO_DE_DATOS.md).
 
 ## Ejecutar y validar
 

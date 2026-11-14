@@ -27,6 +27,7 @@ Future<void> showIncidentDialog(
       courseId: course.id,
       sessionId: sessionId,
       message: message,
+      teacherUid: course.teacherUid,
     );
     if (context.mounted) {
       showAppMessage(

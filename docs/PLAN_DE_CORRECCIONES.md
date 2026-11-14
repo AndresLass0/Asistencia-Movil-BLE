@@ -76,14 +76,18 @@
 
 Implementadas desde los diseños de `docs/images_views_estudiante/`, con Firestore real: Inicio, Mis Clases, Detalle, Asistencia, Comprobante, Fallo, Historial con PDF y Perfil. Inconsistencias resueltas en la AUDITORIA §8. Las tareas 5.2 (persistencia de asistencias e historial real) y 5.5 (parcial: `AttendanceTab.register` inyectable) quedan cubiertas.
 
+## Fase 4c — Vista del docente (2026-11-01) ✅ implementada · ⏳ sin validar en servidor
+
+Implementada desde `docs/images_views_docente/`: acceso con autorización (`teachers/{correo}` + correo verificado), Clases, Crear/Editar clase con importación Excel/CSV, Sesión activa, Resumen de asistencia, Historial, Reportes y Perfil, más la demostración del docente. Reglas nuevas para `courses`, `sessions`, `attendance` (manual), `justifications` e `incidents`. Inconsistencias: AUDITORIA §9. Pendiente: publicar las reglas y probar en dispositivos.
+
 ## Fase 5 — Funcionalidad de fondo (pendiente)
 
 | # | Tarea | Dependencia |
 |---|---|---|
-| 5.1 | Vista de docente (qué ve y qué puede hacer) | ❓ Reglas de negocio |
+| 5.1 | Vista de docente (qué ve y qué puede hacer) | ✅ Fase 4c (falta validar en servidor) |
 | 5.2 | Persistir asistencias en Firestore e Historial real | ✅ Hecho (falta publicar las reglas) |
-| 5.2b | Vista docente para abrir y cerrar sesiones y crear asignaturas | ❓ Reglas de negocio |
-| 5.3 | Verificación de correo / restricción de dominio en Auth | ❓ Autorización (cambia configuración y flujo) |
+| 5.2b | Vista docente para abrir y cerrar sesiones y crear asignaturas | ✅ Fase 4c |
+| 5.3 | Verificación de correo / restricción de dominio en Auth | 🟡 Obligatoria para docentes (sin cambiar la configuración de Firebase); estudiantes ❓ |
 | 5.4 | BLE real (paquete, permisos, textos sobre ubicación) | ❓ Hardware y protocolo |
 | 5.5 | `AuthService` inyectable + pruebas de flujos con Firebase simulado | — |
 | 5.6 | Firma de release e identificadores definitivos | ❓ Re-registro en Firebase |
