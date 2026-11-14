@@ -19,9 +19,11 @@ lib/
 ├── firebase_options.dart         # FlutterFire (no editar a mano)
 ├── core/                         # colores, tema, rutas, validadores, mensajes, fechas
 ├── models/
-│   ├── course.dart               # Course, ClassSchedule, RosterEntry
+│   ├── course.dart               # Course, ClassSchedule, RosterEntry (fila de una lista)
+│   ├── enrollment.dart           # Enrollment: matrícula por correo, estados y expectedAt
+│   ├── roster_plan.dart          # RosterPlan: importar (reemplaza), invitar, quitar y diferencias
 │   ├── course_session.dart       # CourseSession (status + ventana endsAt)
-│   ├── attendance_record.dart    # AttendanceRecord (id = sessionId_uid, method)
+│   ├── attendance_record.dart    # AttendanceRecord (id = sessionId_correo, method)
 │   ├── justification.dart        # revisión de inasistencias del docente
 │   ├── incident.dart             # incidencias reportadas por estudiantes
 │   ├── academic_snapshot.dart    # cálculos del estudiante + todayClassesOf/nextClassOf
@@ -29,8 +31,9 @@ lib/
 │   └── user_profile.dart         # UserProfile, UserRole, UserSettings
 ├── services/
 │   ├── user_profile_service.dart # users / codes / teachers (autorización)
-│   ├── academic_service.dart     # flujo del estudiante (courses + sessions + attendance)
-│   ├── attendance_service.dart   # registro del estudiante e incidencias
+│   ├── academic_service.dart     # flujo del estudiante (enrollments → courses + sessions + attendance)
+│   ├── attendance_service.dart   # registro del estudiante (con sessionDevices) e incidencias
+│   ├── device_key.dart           # huella del celular (canal nativo bioasistencia/device)
 │   ├── student_backend.dart      # StudentBackend + FirebaseStudentBackend
 │   ├── teacher_backend.dart      # TeacherBackend + FirebaseTeacherBackend
 │   ├── email_verification.dart   # EmailVerifier + FirebaseEmailVerifier
@@ -74,7 +77,7 @@ Firestore ──AcademicService.watch(uid)──▶ AcademicSnapshot ──▶ H
                        Dashboard · Clases · Asistencia · Historial · Perfil · Detalle
 ```
 
-- `AcademicService.watch` combina tres consultas: `courses` (`students` arrayContains uid), `sessions` (`courseId` whereIn, en bloques de 30) y `attendance` (`studentUid` == uid). Emite un `AcademicSnapshot` cuando las tres tienen datos, y propaga los errores. Marca `isFromCache` para el indicador "En línea / Sin conexión".
+- `AcademicService.watch(correo)` escucha `enrollments` (`email` == correo); por cada matrícula visible escucha `courses/{id}`; además `sessions` (`courseId` whereIn, en bloques de 30, sin las invitaciones) y `attendance` (`email` == correo). Emite un `AcademicSnapshot` cuando todo tiene datos, y propaga los errores. Marca `isFromCache` para el indicador "En línea / Sin conexión".
 - `AcademicSnapshot` es inmutable y sin UI: porcentajes, faltas, clases de hoy, siguiente clase, periodos, sesiones pendientes y asignatura sugerida. Está cubierto por `test/academic_test.dart`.
 - `HomeScreen` se suscribe manualmente (no con `StreamBuilder`) para poder detectar sesiones nuevas y lanzar la alerta en vivo. Publica el estado en un `ValueNotifier<AcademicState>`, que también escucha el detalle de asignatura.
 
@@ -82,22 +85,25 @@ Firestore ──AcademicService.watch(uid)──▶ AcademicSnapshot ──▶ H
 
 `AttendanceService.registerForCourse`:
 1. consulta en el **servidor** (no en caché) la sesión `open` más reciente de la asignatura;
-2. si ya existe `attendance/{sessionId}_{uid}`, la devuelve marcada como `alreadyRegistered`;
-3. si no, la crea con `registeredAt` del servidor y la vuelve a leer;
-4. tiempo máximo de 15 s. Los errores se traducen a `AttendanceFailure`: `noOpenSession`, `offline`, `denied` o `unknown`.
+2. si ya existe `attendance/{sessionId}_{correo}`, la devuelve marcada como `alreadyRegistered`;
+3. si `sessionDevices/{sessionId}_{huella}` ya existe con otro correo → `deviceInUse` (un celular, un estudiante por sesión);
+4. si no, crea en **un solo lote** la asistencia (`registeredAt` del servidor) y `sessionDevices`, y la vuelve a leer;
+5. tiempo máximo de 15 s. Los errores se traducen a `AttendanceFailure`: `noOpenSession`, `offline`, `denied`, `deviceInUse`, `unsupportedDevice` (web/escritorio: no hay huella) o `unknown`.
 
 `AttendanceTab` muestra la animación de búsqueda al menos 1,5 s (solo por experiencia de uso; no altera el resultado). Luego abre el comprobante o la pantalla de fallo.
 
 ## 5b. Vista del docente
 
-`TeacherHomeScreen` mantiene las suscripciones de `TeacherBackend.watch(uid)`: cinco consultas `where('teacherUid', ==, uid)` (`courses`, `sessions`, `attendance`, `justifications`, `incidents`) combinadas en un `TeacherSnapshot` y publicadas en un `ValueNotifier<TeacherState>` que escuchan las pestañas, la sesión activa y el resumen.
+`TeacherHomeScreen` mantiene las suscripciones de `TeacherBackend.watch(uid)`: seis consultas `where('teacherUid', ==, uid)` (`courses`, `sessions`, `enrollments`, `attendance`, `justifications`, `incidents`) combinadas en un `TeacherSnapshot` y publicadas en un `ValueNotifier<TeacherState>` que escuchan las pestañas, la sesión activa y el resumen.
 
 Ciclo de una sesión:
 1. **Iniciar:** `startSession(course, minutos)` crea `sessions` con `status: open`, `startsAt` del servidor y `endsAt = ahora + minutos`.
-2. **Registro:** los estudiantes registran (`attendance`, `method: session`) mientras `status == open` y antes de `endsAt`. El docente puede añadir excepciones (`method: manual`). El id `{sessionId}_{uid}` evita duplicados.
+2. **Registro:** los estudiantes registran (`attendance`, `method: session`) mientras `status == open` y antes de `endsAt`. El docente puede añadir excepciones (`method: manual`). El id `{sessionId}_{correo}` evita duplicados.
 3. **Cierre automático:** al pasar `endsAt` las reglas rechazan nuevos registros; la sesión cuenta como realizada.
 4. **Finalizar:** `closeSession` → `status: closed`, `closedAt` del servidor (no se puede reabrir).
 5. **Revisión:** `setAbsenceStatus` guarda `justifications` (justificada o confirmada).
+
+Lista de la asignatura: `CourseFormScreen` recibe las matrículas actuales; importar calcula un `RosterPlan` (vista previa), invitar y quitar cambian la lista en memoria, y al guardar se escriben solo las diferencias (`RosterPlan.diff`) con `applyRosterChanges` (lotes de hasta 450). `createCourse` escribe la asignatura y su lista en el mismo lote (las reglas usan `getAfter`). La campana del docente muestra las sesiones abiertas y los avisos (`TeacherSnapshot.alerts`); "Visto" llama a `markAlertSeen`. El estudiante responde invitaciones (Inicio y campana) y cancela desde el detalle con `StudentBackend.setEnrollmentStatus`.
 
 `StudentBackend` y `TeacherBackend` aíslan Firebase de las pantallas: la implementación real delega en Firestore y la de las pruebas (`test/fakes/`) trabaja en memoria. Las pantallas reciben el backend por parámetro.
 

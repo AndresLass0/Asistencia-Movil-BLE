@@ -1,6 +1,7 @@
 import 'attendance_record.dart';
 import 'course.dart';
 import 'course_session.dart';
+import 'enrollment.dart';
 
 /// Estado de una clase programada para hoy según la hora actual.
 enum ClassTimeStatus { upcoming, inProgress, finished }
@@ -75,21 +76,67 @@ class AttendanceSummary {
   int? get percent => held == 0 ? null : (attended * 100 / held).round();
 }
 
+/// Invitación de un docente a una asignatura (matrícula `invited`).
+class CourseInvitation {
+  const CourseInvitation({required this.course, required this.enrollment});
+
+  final Course course;
+  final Enrollment enrollment;
+}
+
 /// Todo lo que las pantallas del estudiante necesitan, calculado a partir
 /// de los documentos de Firestore. Es inmutable y sin dependencias de UI,
 /// por eso se puede probar con datos de ejemplo.
+///
+/// [enrollments] son las matrículas del estudiante. Una asignatura sin
+/// matrícula conocida se trata como matriculada (datos de prueba).
 class AcademicSnapshot {
   AcademicSnapshot({
     required List<Course> courses,
     required List<CourseSession> sessions,
     required List<AttendanceRecord> attendance,
+    List<Enrollment> enrollments = const [],
     this.isFromCache = false,
-  }) : courses = List.unmodifiable(courses),
-       sessions = List.unmodifiable(sessions),
-       attendance = List.unmodifiable(attendance) {
+  }) : sessions = List.unmodifiable(sessions),
+       attendance = List.unmodifiable(attendance),
+       enrollments = List.unmodifiable(enrollments),
+       courses = List.unmodifiable(_visible(courses, enrollments)),
+       invitations = List.unmodifiable(_invitations(courses, enrollments)) {
     for (final r in attendance) {
       _recordBySession[r.sessionId] = r;
     }
+    for (final e in enrollments) {
+      _enrollmentByCourse[e.courseId] = e;
+    }
+  }
+
+  static Map<String, Enrollment> _byCourse(List<Enrollment> list) => {
+    for (final e in list) e.courseId: e,
+  };
+
+  /// Asignaturas que el estudiante ve: matriculado, canceló o salió de la
+  /// lista (para su historial). Las invitaciones van aparte.
+  static List<Course> _visible(List<Course> all, List<Enrollment> list) {
+    final map = _byCourse(list);
+    return [
+      for (final c in all)
+        if (map[c.id] == null ||
+            (map[c.id]!.status.studentCanSee &&
+                map[c.id]!.status != EnrollmentStatus.invited))
+          c,
+    ];
+  }
+
+  static List<CourseInvitation> _invitations(
+    List<Course> all,
+    List<Enrollment> list,
+  ) {
+    final map = _byCourse(list);
+    return [
+      for (final c in all)
+        if (map[c.id]?.status == EnrollmentStatus.invited)
+          CourseInvitation(course: c, enrollment: map[c.id]!),
+    ];
   }
 
   static final empty = AcademicSnapshot(
@@ -98,14 +145,27 @@ class AcademicSnapshot {
     attendance: const [],
   );
 
+  /// Asignaturas visibles (sin las invitaciones pendientes).
   final List<Course> courses;
   final List<CourseSession> sessions;
   final List<AttendanceRecord> attendance;
+  final List<Enrollment> enrollments;
+
+  /// Invitaciones pendientes de aceptar o rechazar.
+  final List<CourseInvitation> invitations;
 
   /// true si los datos vienen de la caché local (sin conexión).
   final bool isFromCache;
 
   final Map<String, AttendanceRecord> _recordBySession = {};
+  final Map<String, Enrollment> _enrollmentByCourse = {};
+
+  /// Matrícula del estudiante en la asignatura (null si no se conoce).
+  Enrollment? enrollmentFor(String courseId) => _enrollmentByCourse[courseId];
+
+  /// Matriculado ahora (puede registrar asistencia).
+  bool isActiveIn(String courseId) =>
+      _enrollmentByCourse[courseId]?.isActive ?? true;
 
   bool get hasCourses => courses.isNotEmpty;
 
@@ -133,7 +193,11 @@ class AcademicSnapshot {
       if (period == null || c.period == period) c,
   ]..sort((a, b) => a.name.compareTo(b.name));
 
-  List<Course> get currentCourses => coursesInPeriod(currentPeriod);
+  /// Asignaturas del periodo actual en las que está matriculado ahora.
+  List<Course> get currentCourses => [
+    for (final c in coursesInPeriod(currentPeriod))
+      if (isActiveIn(c.id)) c,
+  ];
 
   /// Sesiones de una asignatura, de la más reciente a la más antigua.
   List<CourseSession> sessionsFor(String courseId) => [
@@ -144,15 +208,20 @@ class AcademicSnapshot {
   CourseStats statsFor(Course course) {
     var attended = 0, absences = 0;
     CourseSession? open;
+    final enrollment = _enrollmentByCourse[course.id];
+    final active = enrollment?.isActive ?? true;
     for (final s in sessions) {
       if (s.courseId != course.id) continue;
       final record = _recordBySession[s.id];
       if (record != null) {
         attended++;
-      } else if (!s.isOpen) {
+      } else if (!s.isOpen && (enrollment?.expectedAt(s) ?? true)) {
+        // Solo cuentan las sesiones en las que estaba matriculado.
         absences++;
       }
-      if (s.isOpen && (open == null || s.startsAt.isAfter(open.startsAt))) {
+      if (active &&
+          s.isOpen &&
+          (open == null || s.startsAt.isAfter(open.startsAt))) {
         open = s;
       }
     }

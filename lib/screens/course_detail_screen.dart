@@ -7,6 +7,7 @@ import '../core/date_format.dart';
 import '../models/academic_snapshot.dart';
 import '../models/course.dart';
 import '../models/course_session.dart';
+import '../models/enrollment.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_top_bar.dart';
 import '../widgets/incident_dialog.dart';
@@ -24,6 +25,7 @@ class CourseDetailScreen extends StatelessWidget {
     required this.academic,
     required this.uid,
     required this.onRegister,
+    this.onWithdraw,
     this.backend = const FirebaseStudentBackend(),
   });
 
@@ -34,6 +36,9 @@ class CourseDetailScreen extends StatelessWidget {
 
   /// Registrar asistencia (HomeScreen cambia a la pestaña Asistencia).
   final ValueChanged<Course> onRegister;
+
+  /// Cancelar la asignatura; devuelve true si se canceló.
+  final Future<bool> Function(Course course)? onWithdraw;
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +69,7 @@ class CourseDetailScreen extends StatelessWidget {
               Navigator.pop(context);
               onRegister(course);
             },
+            onWithdraw: onWithdraw == null ? null : () => onWithdraw!(course),
             onReport: () => showIncidentDialog(
               context,
               uid: uid,
@@ -84,22 +90,52 @@ class _Body extends StatelessWidget {
     required this.data,
     required this.onRegister,
     required this.onReport,
+    this.onWithdraw,
   });
 
   final Course course;
   final AcademicSnapshot data;
   final VoidCallback onRegister;
   final VoidCallback onReport;
+  final VoidCallback? onWithdraw;
 
   @override
   Widget build(BuildContext context) {
     final stats = data.statsFor(course);
     final sessions = data.sessionsFor(course.id);
     final max = course.maxAbsences;
+    final enrollment = data.enrollmentFor(course.id);
+    final status = enrollment?.status ?? EnrollmentStatus.active;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
       children: [
+        if (status == EnrollmentStatus.withdrawn ||
+            status == EnrollmentStatus.removed) ...[
+          AppCard(
+            elevated: false,
+            color: AppColors.grayChip,
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: AppColors.hint),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    status == EnrollmentStatus.withdrawn
+                        ? 'Cancelaste esta asignatura. Tu historial se '
+                              'conserva; para volver, el docente debe '
+                              'invitarte de nuevo.'
+                        : 'Ya no estás en la lista de esta asignatura. Tu '
+                              'historial se conserva.',
+                    style: const TextStyle(color: AppColors.hint),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
         AppCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -209,6 +245,20 @@ class _Body extends StatelessWidget {
             ),
           ),
         ),
+        if (status == EnrollmentStatus.active && onWithdraw != null)
+          Center(
+            child: TextButton.icon(
+              onPressed: onWithdraw,
+              icon: const Icon(
+                Icons.person_remove_outlined,
+                color: AppColors.required,
+              ),
+              label: const Text(
+                'Cancelar asignatura',
+                style: TextStyle(color: AppColors.required),
+              ),
+            ),
+          ),
       ],
     );
   }

@@ -94,5 +94,47 @@ void main() {
       expect(find.text('¡Asistencia registrada!'), findsOneWidget);
       expect(find.text('Registro guardado en BioAsistencia.'), findsOneWidget);
     });
+
+    testWidgets('aceptar una invitación la pasa a Mis Clases', (tester) async {
+      useTallView(tester);
+      final backend = FakeStudentBackend();
+      await tester.pumpWidget(wrap(home(backend)));
+      await pumpFrames(tester);
+      expect(find.text('Invitación a una clase'), findsOneWidget);
+      expect(find.textContaining('Computación Móvil'), findsOneWidget);
+
+      await tester.tap(find.text('Aceptar'));
+      await pumpFrames(tester);
+      expect(find.text('Invitación a una clase'), findsNothing);
+      expect(find.text('Te uniste a Computación Móvil.'), findsOneWidget);
+      final data = (await tester.runAsync(
+        () => backend.watchAcademic(FakeStudentBackend.email).first,
+      ))!;
+      expect(data.currentCourses.map((c) => c.id), contains('demo-c5'));
+    });
+
+    testWidgets('cancelar una asignatura desde el detalle', (tester) async {
+      useTallView(tester);
+      final backend = FakeStudentBackend();
+      await tester.pumpWidget(wrap(home(backend)));
+      await pumpFrames(tester);
+      await tester.tap(find.text('Mis Clases'));
+      await pumpFrames(tester);
+      await tester.tap(find.text('Ver detalle de clase').first);
+      await pumpFrames(tester);
+
+      final cancel = find.text('Cancelar asignatura');
+      await tester.ensureVisible(cancel);
+      await pumpFrames(tester);
+      await tester.tap(cancel);
+      await pumpFrames(tester);
+      expect(find.textContaining('el docente recibirá un aviso'), findsOne);
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'Cancelar asignatura'),
+      );
+      await pumpFrames(tester);
+      expect(find.textContaining('Cancelaste esta asignatura'), findsOneWidget);
+      expect(find.text('Cancelar asignatura'), findsNothing);
+    });
   });
 }

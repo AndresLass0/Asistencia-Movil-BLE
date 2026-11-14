@@ -121,7 +121,7 @@ class _SummaryBody extends StatelessWidget {
     AbsenceStatus status,
   ) => runTeacherAction(
     context,
-    () => backend.setAbsenceStatus(session, row.student.uid!, status),
+    () => backend.setAbsenceStatus(session, row.student.email, status),
     done: status == AbsenceStatus.justified
         ? 'Inasistencia de ${row.student.name} justificada.'
         : 'Falta de ${row.student.name} confirmada.',
@@ -276,7 +276,7 @@ class _SummaryBody extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 10),
             child: _AbsentCard(
               row: r,
-              canReview: closed && r.linked,
+              canReview: closed,
               onJustify: () =>
                   _setStatus(context, s, r, AbsenceStatus.justified),
               onConfirm: () =>
@@ -372,9 +372,9 @@ class _AbsentCard extends StatelessWidget {
                       [
                         if (row.student.code.isNotEmpty)
                           'Cód. ${row.student.code}',
-                        row.linked
+                        row.enrolled
                             ? 'No registró asistencia'
-                            : 'Sin cuenta en BioAsistencia',
+                            : 'No registró · ${row.student.status.label}',
                       ].join(' • '),
                       style: const TextStyle(
                         fontSize: 12.5,

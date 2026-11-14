@@ -7,6 +7,7 @@ import '../../core/app_colors.dart';
 import '../../core/ui_messages.dart';
 import '../../models/course.dart';
 import '../../models/course_session.dart';
+import '../../models/enrollment.dart';
 import '../../models/teacher_snapshot.dart';
 import '../../models/user_profile.dart';
 import '../../services/report_service.dart';
@@ -128,6 +129,9 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
           teacherName: _name,
           course: course,
           defaultPeriod: _state.value.data?.currentPeriod,
+          enrollments: course == null
+              ? const []
+              : _state.value.data?.enrollmentsOf(course.id) ?? const [],
         ),
       ),
     );
@@ -155,7 +159,10 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
     if (!ok || !mounted) return;
     await runTeacherAction(
       context,
-      () => widget.backend.deleteCourse(course.id),
+      () => widget.backend.deleteCourse(
+        course,
+        data?.enrollmentsOf(course.id) ?? const [],
+      ),
       done: 'Asignatura eliminada.',
     );
   }
@@ -168,7 +175,11 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
       _openSession(active);
       return;
     }
-    final minutes = await showSessionDurationSheet(context, course);
+    final minutes = await showSessionDurationSheet(
+      context,
+      course,
+      enrolled: _state.value.data?.enrolledCount(course.id) ?? 0,
+    );
     if (minutes == null || !mounted) return;
     CourseSession? created;
     final ok = await runTeacherAction(context, () async {
@@ -219,18 +230,20 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
   void _showActiveSessions() {
     final data = _state.value.data;
     final active = data?.activeSessions ?? const <CourseSession>[];
+    final alerts = data?.alerts ?? const <Enrollment>[];
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Sesiones sin finalizar',
+                'Avisos',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 8),
@@ -262,6 +275,41 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
                     child: const Text('Abrir'),
                   ),
                 ),
+              if (alerts.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  'Avisos de estudiantes',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+                for (final e in alerts)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      e.status == EnrollmentStatus.withdrawn
+                          ? Icons.person_remove_outlined
+                          : Icons.cancel_schedule_send_outlined,
+                      color: AppColors.required,
+                    ),
+                    title: Text(
+                      e.name,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      '${e.status == EnrollmentStatus.withdrawn ? 'Canceló' : 'Rechazó la invitación a'} '
+                      '${data!.courseById(e.courseId)?.name ?? 'la asignatura'}',
+                    ),
+                    trailing: TextButton(
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        runTeacherAction(
+                          context,
+                          () => widget.backend.markAlertSeen(e),
+                        );
+                      },
+                      child: const Text('Visto'),
+                    ),
+                  ),
+              ],
             ],
           ),
         ),
@@ -367,7 +415,9 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
       appBar: HomeHeader(
         subtitle: _subtitles[_index],
         campus: _profile?.campus ?? '',
-        pendingSessions: state.data?.activeSessions.length ?? 0,
+        pendingSessions:
+            (state.data?.activeSessions.length ?? 0) +
+            (state.data?.alerts.length ?? 0),
         onNotifications: _showActiveSessions,
       ),
       body: body,

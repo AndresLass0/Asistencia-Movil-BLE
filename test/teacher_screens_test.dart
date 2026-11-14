@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:proyecto_asistencia/models/enrollment.dart';
 import 'package:proyecto_asistencia/models/teacher_snapshot.dart';
 import 'package:proyecto_asistencia/screens/teacher/active_session_screen.dart';
 import 'package:proyecto_asistencia/screens/teacher/course_form_screen.dart';
@@ -132,15 +133,17 @@ void main() {
         await tester.tap(find.text('Ver sesión en curso'));
         await pumpFrames(tester);
         expect(find.byType(ActiveSessionScreen), findsOneWidget);
-        expect(find.text('Asistencia registrada: 7 / 12'), findsOneWidget);
-        expect(find.text('Sin cuenta en BioAsistencia'), findsOneWidget);
+        expect(find.text('Asistencia registrada: 7 / 11'), findsOneWidget);
+        // Todos los pendientes se pueden marcar a mano (tengan o no cuenta);
+        // la invitación pendiente no aparece en la planilla.
+        expect(find.text('Marcar presente'), findsNWidgets(4));
 
         // Registro manual de una excepción.
         await tester.tap(find.text('Marcar presente').first);
         await pumpFrames(tester);
         await tester.tap(find.text('Registrar'));
         await pumpFrames(tester);
-        expect(find.text('Asistencia registrada: 8 / 12'), findsOneWidget);
+        expect(find.text('Asistencia registrada: 8 / 11'), findsOneWidget);
         expect(find.textContaining('Registro manual'), findsOneWidget);
 
         await tester.tap(find.text('Finalizar asistencia'));
@@ -195,11 +198,16 @@ void main() {
         find.widgetWithText(TextField, 'Código estudiantil'),
         '12345',
       );
-      await tester.ensureVisible(find.text('Añadir a la lista'));
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Correo institucional'),
+        'Ana.Perez@udla.edu.co',
+      );
+      await tester.ensureVisible(find.text('Invitar a la clase'));
       await pumpFrames(tester);
-      await tester.tap(find.text('Añadir a la lista'));
+      await tester.tap(find.text('Invitar a la clase'));
       await pumpFrames(tester);
       expect(find.text('Crear clase con 1 estudiantes'), findsOneWidget);
+      expect(find.text('0 matriculados · 1 invitaciones'), findsOneWidget);
 
       final save = find.text('Crear clase con 1 estudiantes');
       await tester.ensureVisible(save);
@@ -210,8 +218,11 @@ void main() {
       final course = data.courses.firstWhere(
         (c) => c.name == 'Sistemas Distribuidos',
       );
-      expect(course.roster.single.isLinked, isTrue); // demo: se vincula
-      expect(course.students, hasLength(1));
+      // Agregado a mano: queda como invitación pendiente.
+      final list = data.currentListOf(course.id);
+      expect(list.single.email, 'ana.perez@udla.edu.co');
+      expect(list.single.status, EnrollmentStatus.invited);
+      expect(data.enrolledCount(course.id), 0);
     });
 
     testWidgets('validaciones del formulario', (tester) async {
@@ -239,9 +250,9 @@ void main() {
         find.widgetWithText(TextField, 'Nombre completo'),
         'Ana',
       );
-      await tester.ensureVisible(find.text('Añadir a la lista'));
+      await tester.ensureVisible(find.text('Invitar a la clase'));
       await pumpFrames(tester);
-      await tester.tap(find.text('Añadir a la lista'));
+      await tester.tap(find.text('Invitar a la clase'));
       await pumpFrames(tester);
       expect(
         find.text('El código debe tener entre 5 y 15 dígitos.'),

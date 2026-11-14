@@ -6,6 +6,7 @@ import '../../models/academic_snapshot.dart';
 import '../../models/course.dart';
 import '../../models/user_profile.dart';
 import '../../widgets/app_card.dart';
+import '../../widgets/invitation_card.dart';
 import '../../widgets/percent_ring.dart';
 import '../../widgets/primary_button.dart';
 import '../../widgets/state_views.dart';
@@ -20,6 +21,7 @@ class DashboardTab extends StatelessWidget {
     required this.onRegisterAttendance,
     required this.onOpenCourse,
     this.settings = const UserSettings(),
+    this.onRespondInvitation,
     this.now,
   });
 
@@ -30,6 +32,10 @@ class DashboardTab extends StatelessWidget {
   final ValueChanged<Course?> onRegisterAttendance;
   final ValueChanged<Course> onOpenCourse;
   final UserSettings settings;
+
+  /// Aceptar (true) o rechazar (false) una invitación a una asignatura.
+  final void Function(CourseInvitation invitation, bool accept)?
+  onRespondInvitation;
 
   /// Hora de referencia (inyectable en pruebas).
   final DateTime? now;
@@ -60,20 +66,31 @@ class DashboardTab extends StatelessWidget {
             const SizedBox(height: 200, child: LoadingView())
           else if (state.error != null)
             AcademicErrorView(error: state.error!)
-          else if (!data!.hasCourses)
-            const AppCard(child: NoCoursesView())
           else ...[
-            if (settings.riskAlerts) ..._riskCards(data),
-            _TodayClassesCard(
-              data: data,
-              now: now,
-              onRegister: onRegisterAttendance,
-              onOpenCourse: onOpenCourse,
-            ),
-            const SizedBox(height: 18),
-            _SummaryCard(data: data),
-            const SizedBox(height: 18),
-            _NextClassCard(data: data, now: now, onOpenCourse: onOpenCourse),
+            for (final inv in data!.invitations)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: InvitationCard(
+                  invitation: inv,
+                  onAccept: () => onRespondInvitation?.call(inv, true),
+                  onDecline: () => onRespondInvitation?.call(inv, false),
+                ),
+              ),
+            if (!data.hasCourses)
+              const AppCard(child: NoCoursesView())
+            else ...[
+              if (settings.riskAlerts) ..._riskCards(data),
+              _TodayClassesCard(
+                data: data,
+                now: now,
+                onRegister: onRegisterAttendance,
+                onOpenCourse: onOpenCourse,
+              ),
+              const SizedBox(height: 18),
+              _SummaryCard(data: data),
+              const SizedBox(height: 18),
+              _NextClassCard(data: data, now: now, onOpenCourse: onOpenCourse),
+            ],
           ],
         ],
       ),

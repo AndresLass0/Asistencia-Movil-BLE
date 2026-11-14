@@ -278,7 +278,7 @@ class _TeacherReportsTabState extends State<TeacherReportsTab> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${data.studentName(i.courseId, i.studentUid)} · '
+                              '${data.studentName(i.courseId, i.email)} · '
                               '${data.courseById(i.courseId)?.name ?? 'Asignatura'}',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
@@ -430,7 +430,7 @@ class _CourseReportCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '${c.enrolledCount} estudiantes · ${c.scheduleLabel}',
+                      '${report.enrolled} estudiantes · ${c.scheduleLabel}',
                       style: const TextStyle(
                         fontSize: 12.5,
                         color: AppColors.textMuted,
@@ -458,7 +458,7 @@ class _CourseReportCard extends StatelessWidget {
                 value: avg == null
                     ? '—'
                     : '${avg.toStringAsFixed(avg % 1 == 0 ? 0 : 1)} / '
-                          '${c.enrolledCount}',
+                          '${report.enrolled}',
                 label: 'Presentes por sesión',
               ),
               StatTile(

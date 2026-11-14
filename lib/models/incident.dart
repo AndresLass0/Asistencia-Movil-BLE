@@ -5,6 +5,7 @@ class Incident {
   const Incident({
     required this.id,
     required this.studentUid,
+    required this.email,
     required this.courseId,
     required this.message,
     required this.createdAt,
@@ -13,6 +14,9 @@ class Incident {
 
   final String id;
   final String studentUid;
+
+  /// Correo institucional del estudiante (minúsculas).
+  final String email;
   final String courseId;
   final String? sessionId;
   final String message;
@@ -23,6 +27,7 @@ class Incident {
     return Incident(
       id: id,
       studentUid: map['studentUid'] as String? ?? '',
+      email: (map['email'] as String? ?? '').toLowerCase(),
       courseId: map['courseId'] as String? ?? '',
       sessionId: map['sessionId'] as String?,
       message: map['message'] as String? ?? '',

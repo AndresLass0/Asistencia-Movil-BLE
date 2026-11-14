@@ -79,7 +79,7 @@ class _TeacherHistoryTabState extends State<TeacherHistoryTab> {
       present += r.present;
       possible += r.total;
       for (final row in r.rows) {
-        students.add(row.student.uid ?? '${r.course.id}:${row.student.code}');
+        students.add('${r.course.id}:${row.student.email}');
       }
     }
     final pct = possible == 0 ? null : (present * 100 / possible).round();

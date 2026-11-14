@@ -48,14 +48,14 @@ void main() {
   group('modelos', () {
     test('AttendanceRecord.code y docId', () {
       final r = AttendanceRecord(
-        id: AttendanceRecord.docId('s1', 'u1'),
-        studentUid: 'u1',
+        id: AttendanceRecord.docId('s1', 'U1@udla.edu.co'),
+        email: 'u1@udla.edu.co',
         courseId: 'c1',
         sessionId: 's1',
         registeredAt: DateTime(2026, 11, 1, 18, 3, 42),
       );
       expect(r.code, 'AS-261101-180342');
-      expect(r.id, 's1_u1');
+      expect(r.id, 's1_u1@udla.edu.co');
     });
 
     test('UserProfile ida y vuelta por mapa', () {

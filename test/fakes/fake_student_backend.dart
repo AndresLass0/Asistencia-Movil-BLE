@@ -4,6 +4,7 @@ import 'package:proyecto_asistencia/models/academic_snapshot.dart';
 import 'package:proyecto_asistencia/models/attendance_record.dart';
 import 'package:proyecto_asistencia/models/course.dart';
 import 'package:proyecto_asistencia/models/course_session.dart';
+import 'package:proyecto_asistencia/models/enrollment.dart';
 import 'package:proyecto_asistencia/models/user_profile.dart';
 import 'package:proyecto_asistencia/services/attendance_service.dart';
 import 'package:proyecto_asistencia/services/student_backend.dart';
@@ -33,6 +34,7 @@ class FakeStudentBackend extends StudentBackend {
   final _courses = <Course>[];
   final _sessions = <CourseSession>[];
   final _attendance = <AttendanceRecord>[];
+  final _enrollments = <Enrollment>[];
   final _academicCtrl = StreamController<AcademicSnapshot>.broadcast();
   final _profileCtrl = StreamController<UserProfile?>.broadcast();
 
@@ -49,6 +51,18 @@ class FakeStudentBackend extends StudentBackend {
     courses: _courses,
     sessions: _sessions,
     attendance: _attendance,
+    enrollments: _enrollments,
+  );
+
+  /// Matrícula de ejemplo (activa desde mucho antes de las sesiones).
+  Enrollment _enroll(Course c, EnrollmentStatus status) => Enrollment(
+    courseId: c.id,
+    email: email,
+    code: '0000000000',
+    name: name,
+    status: status,
+    teacherUid: 'demo-teacher',
+    statusAt: DateTime(2000),
   );
 
   /// Periodo "AAAA-1" (ene–jun) o "AAAA-2" (jul–dic) de una fecha.
@@ -130,7 +144,20 @@ class FakeStudentBackend extends StudentBackend {
       teacherName: 'Docente de ejemplo',
       room: 'Aula 105',
     );
-    _courses.addAll([live, finished, risky, past]);
+    // Invitación pendiente de un docente.
+    final invited = Course(
+      id: 'demo-c5',
+      name: 'Computación Móvil',
+      period: current,
+      group: '03',
+      teacherName: 'Docente invitador',
+    );
+    _courses.addAll([live, finished, risky, past, invited]);
+    _enrollments.addAll([
+      for (final c in [live, finished, risky, past])
+        _enroll(c, EnrollmentStatus.active),
+      _enroll(invited, EnrollmentStatus.invited),
+    ]);
 
     var n = 0;
     void addWeekly(Course c, int start, int weeks, Set<int> absences) {
@@ -193,7 +220,8 @@ class FakeStudentBackend extends StudentBackend {
   }
 
   AttendanceRecord _record(CourseSession s, DateTime at) => AttendanceRecord(
-    id: AttendanceRecord.docId(s.id, uid),
+    id: AttendanceRecord.docId(s.id, email),
+    email: email,
     studentUid: uid,
     courseId: s.courseId,
     sessionId: s.id,
@@ -208,7 +236,7 @@ class FakeStudentBackend extends StudentBackend {
       watchValue(current, changes);
 
   @override
-  Stream<AcademicSnapshot> watchAcademic(String uid) =>
+  Stream<AcademicSnapshot> watchAcademic(String email) =>
       _watch(() => _snapshot, _academicCtrl.stream);
 
   @override
@@ -224,7 +252,7 @@ class FakeStudentBackend extends StudentBackend {
       return const AttendanceResult.failure(AttendanceFailure.noOpenSession);
     }
     final session = open.first;
-    final id = AttendanceRecord.docId(session.id, uid);
+    final id = AttendanceRecord.docId(session.id, email);
     final existing = _attendance.where((r) => r.id == id);
     if (existing.isNotEmpty) {
       return AttendanceResult.success(
@@ -237,6 +265,21 @@ class FakeStudentBackend extends StudentBackend {
     _attendance.add(record);
     _emit();
     return AttendanceResult.success(record, session);
+  }
+
+  @override
+  Future<void> setEnrollmentStatus(
+    Enrollment enrollment,
+    EnrollmentStatus status,
+  ) async {
+    final i = _enrollments.indexWhere((e) => e.id == enrollment.id);
+    if (i < 0) return;
+    _enrollments[i] = _enrollments[i].copyWith(
+      status: status,
+      statusAt: DateTime.now(),
+      teacherSeen: false,
+    );
+    _emit();
   }
 
   @override

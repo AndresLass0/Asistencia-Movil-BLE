@@ -20,7 +20,7 @@ enum AbsenceStatus {
   }
 }
 
-/// Revisión de una inasistencia (`justifications/{sessionId}_{studentUid}`).
+/// Revisión de una inasistencia (`justifications/{sessionId}_{correo}`).
 ///
 /// Es una anotación del docente: la inasistencia sigue contando como falta
 /// en los porcentajes (no hay una regla institucional confirmada sobre las
@@ -29,7 +29,7 @@ class Justification {
   const Justification({
     required this.sessionId,
     required this.courseId,
-    required this.studentUid,
+    required this.email,
     required this.status,
     this.teacherUid = '',
     this.updatedAt,
@@ -37,15 +37,17 @@ class Justification {
 
   final String sessionId;
   final String courseId;
-  final String studentUid;
+
+  /// Correo institucional del estudiante (minúsculas).
+  final String email;
   final AbsenceStatus status;
   final String teacherUid;
   final DateTime? updatedAt;
 
-  static String docId(String sessionId, String studentUid) =>
-      '${sessionId}_$studentUid';
+  static String docId(String sessionId, String email) =>
+      '${sessionId}_${email.trim().toLowerCase()}';
 
-  String get id => docId(sessionId, studentUid);
+  String get id => docId(sessionId, email);
 
   static Justification? tryParse(Map<String, dynamic> map) {
     final status = AbsenceStatus.fromId(map['status']);
@@ -54,7 +56,7 @@ class Justification {
     return Justification(
       sessionId: map['sessionId'] as String? ?? '',
       courseId: map['courseId'] as String? ?? '',
-      studentUid: map['studentUid'] as String? ?? '',
+      email: (map['email'] as String? ?? '').toLowerCase(),
       status: status,
       teacherUid: map['teacherUid'] as String? ?? '',
       updatedAt: ts is Timestamp ? ts.toDate() : null,

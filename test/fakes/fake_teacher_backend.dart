@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:proyecto_asistencia/models/attendance_record.dart';
 import 'package:proyecto_asistencia/models/course.dart';
 import 'package:proyecto_asistencia/models/course_session.dart';
+import 'package:proyecto_asistencia/models/enrollment.dart';
 import 'package:proyecto_asistencia/models/incident.dart';
 import 'package:proyecto_asistencia/models/justification.dart';
+import 'package:proyecto_asistencia/models/roster_plan.dart';
 import 'package:proyecto_asistencia/models/teacher_snapshot.dart';
 import 'package:proyecto_asistencia/models/user_profile.dart';
 import 'package:proyecto_asistencia/services/teacher_backend.dart';
@@ -26,6 +28,7 @@ class FakeTeacherBackend extends TeacherBackend {
   final _courses = <Course>[];
   final _sessions = <CourseSession>[];
   final _attendance = <AttendanceRecord>[];
+  final _enrollments = <Enrollment>[];
   final _justifications = <Justification>[];
   final _incidents = <Incident>[];
   final _ctrl = StreamController<TeacherSnapshot>.broadcast();
@@ -44,6 +47,7 @@ class FakeTeacherBackend extends TeacherBackend {
     courses: _courses,
     sessions: _sessions,
     attendance: _attendance,
+    enrollments: _enrollments,
     justifications: _justifications,
     incidents: _incidents,
   );
@@ -52,13 +56,28 @@ class FakeTeacherBackend extends TeacherBackend {
 
   static String _period(DateTime d) => '${d.year}-${d.month <= 6 ? 1 : 2}';
 
-  List<RosterEntry> _roster(String prefix, int count, {int unlinked = 0}) => [
+  /// Lista de ejemplo: [count] estudiantes; los últimos [invited] con la
+  /// invitación pendiente.
+  List<Enrollment> _roster(
+    String courseId,
+    String prefix,
+    int count, {
+    int invited = 0,
+  }) => [
     for (var i = 1; i <= count; i++)
-      RosterEntry(
+      Enrollment(
+        courseId: courseId,
         code: '$prefix${i.toString().padLeft(3, '0')}',
         name: 'Estudiante de ejemplo ${i.toString().padLeft(2, '0')}',
-        email: 'estudiante$i.demo@udla.edu.co',
-        uid: i > count - unlinked ? null : 'demo-$prefix-$i',
+        email: 'estudiante$prefix.$i@udla.edu.co',
+        status: i > count - invited
+            ? EnrollmentStatus.invited
+            : EnrollmentStatus.active,
+        source: i > count - invited
+            ? EnrollmentSource.manual
+            : EnrollmentSource.import,
+        teacherUid: uid,
+        statusAt: DateTime(2000),
       ),
   ];
 
@@ -68,7 +87,6 @@ class FakeTeacherBackend extends TeacherBackend {
     required String period,
     required String room,
     required List<ClassSchedule> schedule,
-    required List<RosterEntry> roster,
     int? maxAbsences,
     String group = '01',
   }) => Course(
@@ -80,13 +98,13 @@ class FakeTeacherBackend extends TeacherBackend {
     teacherUid: uid,
     room: room,
     schedule: schedule,
-    roster: roster,
-    students: [
-      for (final r in roster)
-        if (r.isLinked) r.uid!,
-    ],
     maxAbsences: maxAbsences,
   );
+
+  List<Enrollment> _activeOf(Course c) => [
+    for (final e in _enrollments)
+      if (e.courseId == c.id && e.isActive) e,
+  ];
 
   void _build() {
     final today = DateTime(_now.year, _now.month, _now.day);
@@ -114,7 +132,6 @@ class FakeTeacherBackend extends TeacherBackend {
           endMinutes: liveStart + 120,
         ),
       ],
-      roster: _roster('101', 12, unlinked: 1),
       maxAbsences: 3,
     );
     final db = _course(
@@ -126,7 +143,6 @@ class FakeTeacherBackend extends TeacherBackend {
       schedule: [
         ClassSchedule(weekday: day(1), startMinutes: 480, endMinutes: 600),
       ],
-      roster: _roster('102', 8),
       maxAbsences: 3,
     );
     final nets = _course(
@@ -137,7 +153,6 @@ class FakeTeacherBackend extends TeacherBackend {
       schedule: [
         ClassSchedule(weekday: day(3), startMinutes: 840, endMinutes: 960),
       ],
-      roster: const [],
     );
     final old = _course(
       id: 'demo-t4',
@@ -145,12 +160,27 @@ class FakeTeacherBackend extends TeacherBackend {
       period: previous,
       room: 'Aula 105',
       schedule: const [],
-      roster: _roster('103', 6),
     );
     _courses.addAll([live, db, nets, old]);
+    _enrollments.addAll([
+      ..._roster(live.id, '101', 12, invited: 1),
+      ..._roster(db.id, '102', 8),
+      ..._roster(old.id, '103', 6),
+      // Un estudiante que canceló (aviso pendiente para el docente).
+      Enrollment(
+        courseId: db.id,
+        code: '102099',
+        name: 'Estudiante que canceló',
+        email: 'cancelo.102@udla.edu.co',
+        status: EnrollmentStatus.withdrawn,
+        teacherUid: uid,
+        statusAt: _now.subtract(const Duration(days: 1)),
+        teacherSeen: false,
+      ),
+    ]);
 
     void history(Course c, int start, int weeks, DateTime base) {
-      final linked = c.roster.where((r) => r.isLinked).toList();
+      final linked = _activeOf(c);
       for (var wk = 1; wk <= weeks; wk++) {
         final startsAt = base
             .subtract(Duration(days: 7 * wk))
@@ -171,8 +201,8 @@ class FakeTeacherBackend extends TeacherBackend {
           if (absent) continue;
           _attendance.add(
             AttendanceRecord(
-              id: AttendanceRecord.docId(s.id, linked[i].uid!),
-              studentUid: linked[i].uid!,
+              id: AttendanceRecord.docId(s.id, linked[i].email),
+              email: linked[i].email,
               courseId: c.id,
               sessionId: s.id,
               registeredAt: startsAt.add(Duration(minutes: 1 + i % 9)),
@@ -197,12 +227,12 @@ class FakeTeacherBackend extends TeacherBackend {
       teacherUid: uid,
     );
     _sessions.add(open);
-    final linked = live.roster.where((r) => r.isLinked).toList();
+    final linked = _activeOf(live);
     for (var i = 0; i < 7; i++) {
       _attendance.add(
         AttendanceRecord(
-          id: AttendanceRecord.docId(open.id, linked[i].uid!),
-          studentUid: linked[i].uid!,
+          id: AttendanceRecord.docId(open.id, linked[i].email),
+          email: linked[i].email,
           courseId: live.id,
           sessionId: open.id,
           registeredAt: open.startsAt.add(Duration(seconds: 20 + 30 * i)),
@@ -216,7 +246,7 @@ class FakeTeacherBackend extends TeacherBackend {
       Justification(
         sessionId: lastDb.id,
         courseId: db.id,
-        studentUid: db.roster.first.uid!,
+        email: _activeOf(db).first.email,
         status: AbsenceStatus.justified,
         teacherUid: uid,
         updatedAt: lastDb.startsAt,
@@ -225,7 +255,8 @@ class FakeTeacherBackend extends TeacherBackend {
     _incidents.add(
       Incident(
         id: 'demo-i1',
-        studentUid: db.roster[1].uid!,
+        studentUid: 'demo-102-2',
+        email: _activeOf(db)[1].email,
         courseId: db.id,
         sessionId: lastDb.id,
         message:
@@ -250,44 +281,43 @@ class FakeTeacherBackend extends TeacherBackend {
   Stream<TeacherSnapshot> watch(String uid) =>
       watchValue(() => _snapshot, _ctrl.stream);
 
-  @override
-  Future<RosterLink> linkRoster(List<RosterEntry> roster) async {
-    // En las pruebas todos los códigos se consideran registrados.
-    return RosterLink(
-      entries: [
-        for (final e in roster) e.isLinked ? e : e.withUid('demo-${e.code}'),
-      ],
-      mismatches: const [],
-    );
-  }
+  Course _owned(Course c, {String? id}) => Course(
+    id: id ?? c.id,
+    name: c.name,
+    period: c.period,
+    group: c.group,
+    teacherName: name,
+    teacherUid: uid,
+    room: c.room,
+    building: c.building,
+    schedule: c.schedule,
+    maxAbsences: c.maxAbsences,
+    code: c.code,
+    registrationMinutes: c.registrationMinutes,
+  );
 
-  Course _owned(Course c, {String? id}) {
-    final students = {
-      for (final r in c.roster)
-        if (r.isLinked) r.uid!,
-    }.toList();
-    return Course(
-      id: id ?? c.id,
-      name: c.name,
-      period: c.period,
-      group: c.group,
-      teacherName: name,
-      teacherUid: uid,
-      room: c.room,
-      building: c.building,
-      schedule: c.schedule,
-      maxAbsences: c.maxAbsences,
-      code: c.code,
-      roster: c.roster,
-      students: students,
-      registrationMinutes: c.registrationMinutes,
-    );
+  void _apply(List<EnrollmentChange> changes) {
+    final now = DateTime.now();
+    for (final c in changes) {
+      final e = c.statusChanged
+          ? c.target.copyWith(statusAt: now, teacherSeen: true)
+          : c.target.copyWith(teacherSeen: true);
+      _enrollments
+        ..removeWhere((o) => o.id == e.id)
+        ..add(e);
+    }
   }
 
   @override
-  Future<String> createCourse(Course course) async {
+  Future<String> createCourse(
+    Course course, {
+    List<Enrollment> roster = const [],
+  }) async {
     final id = 'demo-new${_nextId++}';
     _courses.add(_owned(course, id: id));
+    _apply(
+      RosterPlan.diff(const [], [for (final e in roster) e.withCourseId(id)]),
+    );
     _emit();
     return id;
   }
@@ -300,8 +330,25 @@ class FakeTeacherBackend extends TeacherBackend {
   }
 
   @override
-  Future<void> deleteCourse(String courseId) async {
-    _courses.removeWhere((c) => c.id == courseId);
+  Future<void> applyRosterChanges(
+    Course course,
+    List<EnrollmentChange> changes,
+  ) async {
+    _apply(changes);
+    _emit();
+  }
+
+  @override
+  Future<void> deleteCourse(Course course, List<Enrollment> enrollments) async {
+    _courses.removeWhere((c) => c.id == course.id);
+    _enrollments.removeWhere((e) => e.courseId == course.id);
+    _emit();
+  }
+
+  @override
+  Future<void> markAlertSeen(Enrollment enrollment) async {
+    final i = _enrollments.indexWhere((e) => e.id == enrollment.id);
+    if (i >= 0) _enrollments[i] = _enrollments[i].copyWith(teacherSeen: true);
     _emit();
   }
 
@@ -340,16 +387,13 @@ class FakeTeacherBackend extends TeacherBackend {
   }
 
   @override
-  Future<void> markManualAttendance(
-    CourseSession session,
-    String studentUid,
-  ) async {
-    final id = AttendanceRecord.docId(session.id, studentUid);
+  Future<void> markManualAttendance(CourseSession session, String email) async {
+    final id = AttendanceRecord.docId(session.id, email);
     if (_attendance.any((r) => r.id == id)) return;
     _attendance.add(
       AttendanceRecord(
         id: id,
-        studentUid: studentUid,
+        email: email,
         courseId: session.courseId,
         sessionId: session.id,
         registeredAt: DateTime.now(),
@@ -363,16 +407,16 @@ class FakeTeacherBackend extends TeacherBackend {
   @override
   Future<void> setAbsenceStatus(
     CourseSession session,
-    String studentUid,
+    String email,
     AbsenceStatus status,
   ) async {
     _justifications
-      ..removeWhere((j) => j.id == Justification.docId(session.id, studentUid))
+      ..removeWhere((j) => j.id == Justification.docId(session.id, email))
       ..add(
         Justification(
           sessionId: session.id,
           courseId: session.courseId,
-          studentUid: studentUid,
+          email: email,
           status: status,
           teacherUid: uid,
           updatedAt: DateTime.now(),

@@ -5,6 +5,8 @@ import '../../core/app_colors.dart';
 import '../../core/ui_messages.dart';
 import '../../core/validators.dart';
 import '../../models/course.dart';
+import '../../models/enrollment.dart';
+import '../../models/roster_plan.dart';
 import '../../services/report_service.dart';
 import '../../services/spreadsheet.dart';
 import '../../services/teacher_backend.dart';
@@ -12,10 +14,16 @@ import '../../widgets/app_card.dart';
 import '../../widgets/app_top_bar.dart';
 import '../../widgets/primary_button.dart';
 import '../../widgets/section_header.dart';
+import '../../widgets/status_chip.dart';
 import 'teacher_ui.dart';
 
-/// Crear o editar una asignatura: datos, horario, lista de estudiantes
-/// (importada de Excel/CSV o añadida a mano) y reglas de registro.
+/// Crear o editar una asignatura: datos, horario, lista de estudiantes y
+/// reglas de registro.
+///
+/// Lista (docs/MODELO_DE_DATOS.md): importar un archivo **reemplaza** la
+/// lista oficial (con vista previa antes de aplicar); agregar a mano envía
+/// una invitación que el estudiante acepta o rechaza. Nada se guarda hasta
+/// pulsar el botón final, que escribe solo las diferencias.
 ///
 /// Devuelve `true` con `Navigator.pop` si se guardó.
 class CourseFormScreen extends StatefulWidget {
@@ -25,10 +33,14 @@ class CourseFormScreen extends StatefulWidget {
     required this.teacherName,
     this.course,
     this.defaultPeriod,
+    this.enrollments = const [],
   });
 
   final TeacherBackend backend;
   final String teacherName;
+
+  /// Lista actual de la asignatura (todas las matrículas) al editar.
+  final List<Enrollment> enrollments;
 
   /// Asignatura a editar (null = crear).
   final Course? course;
@@ -57,7 +69,14 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
   final _studentEmail = TextEditingController();
 
   late List<ClassSchedule> _schedule = [...?widget.course?.schedule];
-  late List<RosterEntry> _roster = [...?widget.course?.roster];
+
+  /// Última lista importada en esta edición y su plan frente a la actual.
+  RosterPlan? _plan;
+  List<String> _importIssues = const [];
+
+  /// Invitaciones nuevas y correos quitados a mano en esta edición.
+  final List<RosterEntry> _invites = [];
+  final Set<String> _removed = {};
   late int _minutes =
       widget.course?.registrationMinutes ?? Course.defaultRegistrationMinutes;
   String? _fileName;
@@ -109,14 +128,33 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
 
   // ------------------------------------------------------------ estudiantes
 
-  void _merge(List<RosterEntry> incoming) {
-    final codes = {for (final r in _roster) r.code};
-    final added = [
-      for (final e in incoming)
-        if (codes.add(e.code)) e,
-    ];
-    setState(() => _roster = [..._roster, ...added]);
+  String get _courseId => widget.course?.id ?? '';
+
+  /// Lista como quedará al guardar (por correo).
+  List<Enrollment> get _effective {
+    final map = {for (final e in widget.enrollments) e.email: e};
+    for (final c in _plan?.changes ?? const <EnrollmentChange>[]) {
+      map[c.target.email] = c.target;
+    }
+    for (final email in _removed) {
+      final e = map[email];
+      if (e != null) map[email] = e.copyWith(status: EnrollmentStatus.removed);
+    }
+    for (final r in _invites) {
+      final c = RosterPlan.invite(
+        courseId: _courseId,
+        current: map.values.toList(),
+        entry: r,
+      );
+      if (c != null) map[c.target.email] = c.target;
+    }
+    return map.values.toList()..sort((a, b) => a.name.compareTo(b.name));
   }
+
+  List<Enrollment> get _currentList => [
+    for (final e in _effective)
+      if (e.status.isCurrent) e,
+  ];
 
   Future<void> _import() async {
     final PlatformFile? file;
@@ -133,37 +171,40 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
     try {
       final rows = Spreadsheet.readRows(await file.readAsBytes(), file.name);
       final result = parseRoster(rows);
-      final before = _roster.length;
-      _merge(result.entries);
-      final added = _roster.length - before;
-      setState(() => _fileName = file!.name);
-      if (!mounted) return;
-      if (result.issues.isEmpty) {
+      if (result.entries.isEmpty) {
+        if (!mounted) return;
         showAppMessage(
           context,
-          '$added estudiantes añadidos desde el archivo.',
+          result.issues.isEmpty
+              ? 'El archivo no tiene estudiantes.'
+              : 'Ninguna fila es válida. ${result.issues.first}.',
         );
-      } else {
-        await showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text('$added estudiantes añadidos'),
-            content: SingleChildScrollView(
-              child: Text(
-                'Se omitieron ${result.issues.length} filas:\n\n'
-                '${result.issues.take(30).join('\n')}'
-                '${result.issues.length > 30 ? '\n…' : ''}',
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Entendido'),
-              ),
-            ],
-          ),
-        );
+        return;
       }
+      final plan = RosterPlan.forImport(
+        courseId: _courseId,
+        current: widget.enrollments,
+        imported: result.entries,
+      );
+      if (!mounted) return;
+      final apply = await showDialog<bool>(
+        context: context,
+        builder: (_) => _ImportPreview(
+          fileName: file!.name,
+          rows: result.entries.length + result.issues.length,
+          plan: plan,
+          issues: result.issues,
+          isNewCourse: !_isEdit,
+        ),
+      );
+      if (apply != true || !mounted) return;
+      setState(() {
+        _plan = plan;
+        _importIssues = result.issues;
+        _fileName = file!.name;
+        // La lista importada manda sobre lo quitado a mano antes.
+        _removed.removeWhere((e) => result.entries.any((r) => r.email == e));
+      });
     } on FormatException catch (e) {
       if (mounted) showAppMessage(context, e.message);
     }
@@ -171,7 +212,7 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
 
   Future<void> _downloadTemplate() async {
     final bytes = Spreadsheet.buildXlsx('Estudiantes', const [
-      ['Código', 'Nombre', 'Correo'],
+      ['Código', 'Nombre', 'Correo', 'Programa'],
     ]);
     try {
       final saved = await ReportService.saveXlsx(
@@ -193,20 +234,59 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
       error = 'Escribe el nombre del estudiante.';
     } else if (!isValidCode(code)) {
       error = 'El código debe tener entre 5 y 15 dígitos.';
-    } else if (email.isNotEmpty && !isInstitutionalEmail(email)) {
-      error = 'El correo debe ser @$institutionalDomain.';
-    } else if (_roster.any((r) => r.code == code)) {
-      error = 'Ese código ya está en la lista.';
+    } else if (!isInstitutionalEmail(email)) {
+      error = 'Escribe su correo @$institutionalDomain.';
+    }
+    final entry = RosterEntry(code: code, name: name, email: email);
+    if (error == null) {
+      RosterPlan.invite(
+        courseId: _courseId,
+        current: _effective,
+        entry: entry,
+        error: (m) => error = m,
+      );
     }
     if (error != null) {
-      showAppMessage(context, error);
+      showAppMessage(context, error!);
       return;
     }
-    _merge([RosterEntry(code: code, name: name, email: email)]);
+    setState(() {
+      _removed.remove(email);
+      _invites.add(entry);
+    });
     _studentName.clear();
     _studentCode.clear();
     _studentEmail.clear();
     FocusScope.of(context).unfocus();
+  }
+
+  void _reinvite(Enrollment e) {
+    setState(() {
+      _removed.remove(e.email);
+      _invites.add(
+        RosterEntry(
+          code: e.code,
+          name: e.name,
+          email: e.email,
+          program: e.program,
+        ),
+      );
+    });
+  }
+
+  void _removeFromList(Enrollment e) {
+    setState(() {
+      final invited = _invites.indexWhere((r) => r.email == e.email);
+      if (invited >= 0 &&
+          !widget.enrollments.any(
+            (o) => o.email == e.email && o.status.isCurrent,
+          )) {
+        _invites.removeAt(invited);
+      } else {
+        _invites.removeWhere((r) => r.email == e.email);
+        _removed.add(e.email);
+      }
+    });
   }
 
   // ---------------------------------------------------------------- guardar
@@ -231,15 +311,11 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
       return;
     }
     setState(() => _saving = true);
-    var mismatches = const <String>[];
-    var linked = 0;
+    final changes = RosterPlan.diff(widget.enrollments, _effective);
     final ok = await runTeacherAction(context, () async {
-      final link = await widget.backend.linkRoster(_roster);
-      mismatches = link.mismatches;
-      linked = link.linked;
       final max = _maxAbsences.text.trim();
       final course = Course(
-        id: widget.course?.id ?? '',
+        id: _courseId,
         name: _name.text.trim(),
         period: _period.text.trim(),
         group: _group.text.trim(),
@@ -249,24 +325,29 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
         code: _code.text.trim(),
         schedule: _schedule,
         maxAbsences: max.isEmpty ? null : int.parse(max),
-        roster: link.entries,
         registrationMinutes: _minutes,
       );
       if (_isEdit) {
         await widget.backend.updateCourse(course);
+        await widget.backend.applyRosterChanges(course, changes);
       } else {
-        await widget.backend.createCourse(course);
+        await widget.backend.createCourse(
+          course,
+          roster: [for (final c in changes) c.target],
+        );
       }
     });
     if (!mounted) return;
     setState(() => _saving = false);
     if (!ok) return;
-    final total = _roster.length;
+    final list = _currentList;
+    final active = list.where((e) => e.isActive).length;
+    final invited = list.length - active;
     showAppMessage(
       context,
-      '${_isEdit ? 'Clase actualizada' : 'Clase creada'}. '
-      '$linked de $total estudiantes tienen cuenta en BioAsistencia'
-      '${mismatches.isEmpty ? '' : '; ${mismatches.length} con correo distinto (no vinculados)'}.',
+      '${_isEdit ? 'Clase actualizada' : 'Clase creada'}: '
+      '$active ${active == 1 ? 'matriculado' : 'matriculados'}'
+      '${invited > 0 ? ' y $invited ${invited == 1 ? 'invitación enviada' : 'invitaciones enviadas'}' : ''}.',
     );
     Navigator.pop(context, true);
   }
@@ -285,7 +366,13 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final linked = _roster.where((r) => r.isLinked).length;
+    final list = _currentList;
+    final others = [
+      for (final e in _effective)
+        if (e.status == EnrollmentStatus.withdrawn ||
+            e.status == EnrollmentStatus.declined)
+          e,
+    ];
     return Scaffold(
       appBar: AppTopBar(title: _isEdit ? 'Editar clase' : 'Crear clase'),
       body: ListView(
@@ -429,7 +516,7 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
             icon: Icons.groups_outlined,
             title: 'Lista de estudiantes',
             trailing: Text(
-              '${_roster.length}',
+              '${list.length}',
               style: const TextStyle(
                 fontWeight: FontWeight.w800,
                 color: AppColors.primary,
@@ -441,9 +528,10 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Text(
-                  'Archivo .xlsx o .csv con las columnas: código, nombre y '
-                  'correo (opcional). La primera fila puede tener los '
-                  'encabezados.',
+                  'Carga la lista oficial de matriculados (.xlsx o .csv) con '
+                  'las columnas código, nombre y correo institucional; el '
+                  'programa es opcional. La lista cargada reemplaza a la '
+                  'anterior: verás los cambios antes de aplicarlos.',
                   style: TextStyle(fontSize: 13, color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 10),
@@ -477,7 +565,8 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          _fileName!,
+                          '$_fileName'
+                          '${_importIssues.isEmpty ? '' : ' · ${_importIssues.length} filas omitidas'}',
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
@@ -487,8 +576,13 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
                 ],
                 const Divider(height: 28),
                 const Text(
-                  'Añadir estudiante manualmente',
+                  'Invitar a un estudiante',
                   style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const Text(
+                  'Para alguien que aún no está en la lista oficial. Recibirá '
+                  'una invitación en la app y podrá aceptarla o rechazarla.',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -513,7 +607,7 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
                   controller: _studentEmail,
                   keyboardType: TextInputType.emailAddress,
                   decoration: _decoration(
-                    'Correo (opcional)',
+                    'Correo institucional',
                     Icons.mail_outline,
                     hint: 'usuario@$institutionalDomain',
                   ),
@@ -522,49 +616,74 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
                 OutlinedButton.icon(
                   onPressed: _addManual,
                   icon: const Icon(Icons.person_add_alt),
-                  label: const Text('Añadir a la lista'),
+                  label: const Text('Invitar a la clase'),
                 ),
-                if (_roster.isNotEmpty) ...[
+                if (list.isNotEmpty) ...[
                   const Divider(height: 28),
                   Text(
-                    '${_roster.length} estudiantes en la lista'
-                    '${_isEdit ? ' · $linked con cuenta' : ''}',
+                    '${list.where((e) => e.isActive).length} matriculados'
+                    '${list.any((e) => !e.isActive) ? ' · ${list.where((e) => !e.isActive).length} invitaciones' : ''}',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
-                  for (final r in _roster)
+                  for (final e in list)
                     ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: InitialsAvatar(initials: r.initials),
+                      leading: InitialsAvatar(initials: e.initials),
                       title: Text(
-                        r.name,
+                        e.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       subtitle: Text(
-                        'Cód. ${r.code}${r.email.isEmpty ? '' : ' • ${r.email}'}',
+                        'Cód. ${e.code} • ${e.email}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (_isEdit && !r.isLinked)
+                          if (!e.isActive)
                             const Tooltip(
-                              message: 'Sin cuenta en BioAsistencia',
+                              message: 'Invitación pendiente',
                               child: Icon(
-                                Icons.person_off_outlined,
+                                Icons.schedule_send_outlined,
                                 color: AppColors.textMuted,
                               ),
                             ),
                           IconButton(
                             tooltip: 'Quitar de la lista',
                             icon: const Icon(Icons.delete_outline),
-                            onPressed: () => setState(
-                              () => _roster = [..._roster]..remove(r),
-                            ),
+                            onPressed: () => _removeFromList(e),
                           ),
                         ],
+                      ),
+                    ),
+                ],
+                if (others.isNotEmpty) ...[
+                  const Divider(height: 28),
+                  const Text(
+                    'Cancelaron o rechazaron',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  for (final e in others)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: InitialsAvatar(initials: e.initials),
+                      title: Text(
+                        e.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        e.status.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: TextButton(
+                        onPressed: () => _reinvite(e),
+                        child: const Text('Invitar'),
                       ),
                     ),
                 ],
@@ -624,9 +743,9 @@ class _CourseFormScreenState extends State<CourseFormScreen> {
           PrimaryButton(
             label: _isEdit
                 ? 'Guardar cambios'
-                : _roster.isEmpty
+                : list.isEmpty
                 ? 'Crear clase sin estudiantes'
-                : 'Crear clase con ${_roster.length} estudiantes',
+                : 'Crear clase con ${list.length} estudiantes',
             icon: Icons.check_circle_outline,
             iconOnLeft: true,
             isLoading: _saving,
@@ -740,6 +859,116 @@ class _SlotDialogState extends State<_SlotDialog> {
                 )
               : null,
           child: const Text('Agregar'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Vista previa de una lista importada: qué cambiará antes de aplicarla.
+/// Devuelve true si el docente confirma.
+class _ImportPreview extends StatelessWidget {
+  const _ImportPreview({
+    required this.fileName,
+    required this.rows,
+    required this.plan,
+    required this.issues,
+    required this.isNewCourse,
+  });
+
+  final String fileName;
+  final int rows;
+  final RosterPlan plan;
+  final List<String> issues;
+  final bool isNewCourse;
+
+  @override
+  Widget build(BuildContext context) {
+    final added = plan.countOf(RosterChangeKind.added);
+    final back = plan.countOf(RosterChangeKind.reactivated);
+    final updated = plan.countOf(RosterChangeKind.updated);
+    final same = plan.countOf(RosterChangeKind.unchanged);
+    final leaving = plan.countOf(RosterChangeKind.removed);
+    final choice = plan.countOf(RosterChangeKind.keptChoice);
+    Widget line(IconData icon, String text, {Color? color}) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color ?? AppColors.primary),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text)),
+        ],
+      ),
+    );
+    return AlertDialog(
+      title: const Text('Revisar la lista'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$fileName · $rows filas',
+              style: const TextStyle(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 10),
+            if (added > 0)
+              line(Icons.person_add_alt, '$added nuevos en la lista'),
+            if (back > 0)
+              line(Icons.how_to_reg_outlined, '$back vuelven a la lista'),
+            if (updated > 0)
+              line(Icons.edit_outlined, '$updated con datos actualizados'),
+            if (same > 0) line(Icons.check, '$same sin cambios'),
+            if (leaving > 0)
+              line(
+                Icons.person_remove_outlined,
+                '$leaving salen de la lista (conservan sus asistencias): '
+                '${plan.leaving.take(5).map((e) => e.name).join(', ')}'
+                '${leaving > 5 ? '…' : ''}',
+                color: AppColors.required,
+              ),
+            if (choice > 0)
+              line(
+                Icons.info_outline,
+                '$choice cancelaron o rechazaron la asignatura y siguen en '
+                'el archivo: se respeta su decisión',
+                color: AppColors.hint,
+              ),
+            if (issues.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              StatusChip(
+                label: '${issues.length} filas omitidas',
+                background: AppColors.grayChip,
+                foreground: AppColors.hint,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                issues.take(20).join('\n') + (issues.length > 20 ? '\n…' : ''),
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            Text(
+              isNewCourse
+                  ? 'La lista se guardará al crear la clase.'
+                  : 'Los cambios se guardarán al pulsar "Guardar cambios".',
+              style: const TextStyle(fontSize: 12.5, color: AppColors.hint),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Aplicar'),
         ),
       ],
     );

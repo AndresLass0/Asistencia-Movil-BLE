@@ -63,3 +63,10 @@ CLAUDE.md
 .claude/
 docs/images_views_docente/
 docs/images_views_estudiante/
+
+# Listas de estudiantes (datos personales): nunca al repositorio
+*.xls
+*.xlsx
+*.csv
+!test/**/*.xlsx
+!test/**/*.csv

@@ -230,9 +230,11 @@ class RosterImport {
   final List<String> issues;
 }
 
-/// Convierte filas en estudiantes. Columnas: código, nombre y correo
-/// (opcional). Si la primera fila tiene encabezados, se usan para ubicar
-/// las columnas en cualquier orden.
+/// Convierte filas en estudiantes. Columnas: código, nombre, correo
+/// institucional (obligatorio: identifica al estudiante) y programa
+/// (opcional). Si la primera fila tiene encabezados, se usan para ubicar las
+/// columnas en cualquier orden (p. ej. el formato de la UDLA:
+/// `CODIGOESTUDIANTE`, `NOMBRECOMPLETO`, `MAIL_INST`, `PROGRAMA`).
 RosterImport parseRoster(List<List<String>> rows) {
   if (rows.isEmpty) return const RosterImport(entries: [], issues: []);
   String norm(String s) => s
@@ -241,36 +243,37 @@ RosterImport parseRoster(List<List<String>> rows) {
       .replaceAll('í', 'i')
       .replaceAll('é', 'e')
       .replaceAll('á', 'a')
+      .replaceAll('ú', 'u')
+      .replaceAll(RegExp(r'[\s_.\-]'), '')
       .trim();
 
-  var codeCol = 0, nameCol = 1, emailCol = 2;
+  var codeCol = 0, nameCol = 1, emailCol = 2, programCol = -1;
   var start = 0;
   final header = rows.first.map(norm).toList();
-  final hc = header.indexWhere(
-    (h) => h.startsWith('codigo') || h == 'cod' || h.startsWith('cod.'),
-  );
+  final hc = header.indexWhere((h) => h.startsWith('cod'));
   final hn = header.indexWhere((h) => h.startsWith('nombre'));
   if (hc >= 0 || hn >= 0) {
     start = 1;
     if (hc >= 0) codeCol = hc;
     if (hn >= 0) nameCol = hn;
-    final he = header.indexWhere(
-      (h) => h.startsWith('correo') || h.startsWith('email'),
+    emailCol = header.indexWhere(
+      (h) => h.startsWith('correo') || h.contains('mail'),
     );
-    emailCol = he;
+    programCol = header.indexWhere((h) => h.startsWith('programa'));
   }
 
   String at(List<String> r, int i) => i >= 0 && i < r.length ? r[i].trim() : '';
   final entries = <RosterEntry>[];
   final issues = <String>[];
-  final seen = <String>{};
+  final seenCodes = <String>{};
+  final seenEmails = <String>{};
   for (var i = start; i < rows.length; i++) {
     final row = rows[i];
     final code = at(row, codeCol).replaceAll(RegExp(r'\s'), '');
     final name = at(row, nameCol);
     final email = at(row, emailCol).toLowerCase();
     final n = i + 1;
-    if (code.isEmpty && name.isEmpty) continue;
+    if (code.isEmpty && name.isEmpty && email.isEmpty) continue;
     if (!isValidCode(code)) {
       issues.add('Fila $n: código inválido ("$code")');
       continue;
@@ -279,15 +282,30 @@ RosterImport parseRoster(List<List<String>> rows) {
       issues.add('Fila $n: falta el nombre');
       continue;
     }
-    if (email.isNotEmpty && !isInstitutionalEmail(email)) {
+    if (email.isEmpty) {
+      issues.add('Fila $n: falta el correo institucional');
+      continue;
+    }
+    if (!isInstitutionalEmail(email)) {
       issues.add('Fila $n: el correo no es @$institutionalDomain');
       continue;
     }
-    if (!seen.add(code)) {
+    if (!seenCodes.add(code)) {
       issues.add('Fila $n: código repetido ($code)');
       continue;
     }
-    entries.add(RosterEntry(code: code, name: name, email: email));
+    if (!seenEmails.add(email)) {
+      issues.add('Fila $n: correo repetido ($email)');
+      continue;
+    }
+    entries.add(
+      RosterEntry(
+        code: code,
+        name: name,
+        email: email,
+        program: at(row, programCol),
+      ),
+    );
   }
   return RosterImport(entries: entries, issues: issues);
 }

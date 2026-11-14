@@ -6,8 +6,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/attendance_record.dart';
 import '../models/course.dart';
 import '../models/course_session.dart';
+import '../models/enrollment.dart';
 import '../models/incident.dart';
 import '../models/justification.dart';
+import '../models/roster_plan.dart';
 import '../models/teacher_snapshot.dart';
 import '../models/user_profile.dart';
 import 'user_profile_service.dart';
@@ -24,19 +26,6 @@ enum TeacherAccess {
   notAuthorized,
 }
 
-/// Resultado de vincular la lista oficial con cuentas de BioAsistencia.
-class RosterLink {
-  const RosterLink({required this.entries, required this.mismatches});
-
-  final List<RosterEntry> entries;
-
-  /// Códigos cuyo correo registrado no coincide con el de la lista (no se
-  /// vinculan, para evitar matricular a otra persona).
-  final List<String> mismatches;
-
-  int get linked => entries.where((e) => e.isLinked).length;
-}
-
 /// Operaciones de las vistas del docente. La autorización real la hacen
 /// las reglas de Firestore (`isTeacher()`), no la interfaz.
 abstract class TeacherBackend {
@@ -48,23 +37,35 @@ abstract class TeacherBackend {
   Stream<UserProfile?> watchProfile(String uid);
   Stream<TeacherSnapshot> watch(String uid);
 
-  /// Busca la cuenta de cada código (`codes/{code}`).
-  Future<RosterLink> linkRoster(List<RosterEntry> roster);
-
-  /// Crea la asignatura y devuelve su id.
-  Future<String> createCourse(Course course);
+  /// Crea la asignatura con su lista inicial ([roster]: matrículas nuevas,
+  /// activas o invitadas) en una sola operación. Devuelve su id.
+  Future<String> createCourse(
+    Course course, {
+    List<Enrollment> roster = const [],
+  });
   Future<void> updateCourse(Course course);
-  Future<void> deleteCourse(String courseId);
+
+  /// Aplica los cambios de la lista (importación, invitaciones, quitar).
+  Future<void> applyRosterChanges(
+    Course course,
+    List<EnrollmentChange> changes,
+  );
+
+  /// Elimina la asignatura y sus matrículas (las asistencias se conservan).
+  Future<void> deleteCourse(Course course, List<Enrollment> enrollments);
+
+  /// El docente vio el aviso de rechazo o cancelación.
+  Future<void> markAlertSeen(Enrollment enrollment);
 
   /// Abre una sesión con una ventana de registro de [minutes] minutos.
   Future<CourseSession> startSession(Course course, int minutes);
   Future<void> closeSession(String sessionId);
 
   /// Registra manualmente la asistencia de un estudiante (excepción).
-  Future<void> markManualAttendance(CourseSession session, String studentUid);
+  Future<void> markManualAttendance(CourseSession session, String email);
   Future<void> setAbsenceStatus(
     CourseSession session,
-    String studentUid,
+    String email,
     AbsenceStatus status,
   );
 
@@ -116,6 +117,7 @@ class FirebaseTeacherBackend extends TeacherBackend {
     List<Course>? courses;
     List<CourseSession>? sessions;
     List<AttendanceRecord>? attendance;
+    List<Enrollment>? enrollments;
     List<Justification>? justifications;
     List<Incident>? incidents;
     var fromCache = false;
@@ -124,6 +126,7 @@ class FirebaseTeacherBackend extends TeacherBackend {
       if (courses == null ||
           sessions == null ||
           attendance == null ||
+          enrollments == null ||
           justifications == null ||
           incidents == null) {
         return;
@@ -133,6 +136,7 @@ class FirebaseTeacherBackend extends TeacherBackend {
           courses: courses!,
           sessions: sessions!,
           attendance: attendance!,
+          enrollments: enrollments!,
           justifications: justifications!,
           incidents: incidents!,
           isFromCache: fromCache,
@@ -176,6 +180,14 @@ class FirebaseTeacherBackend extends TeacherBackend {
             }, onError: controller.addError),
           )
           ..add(
+            mine('enrollments').snapshots().listen((snap) {
+              enrollments = [
+                for (final d in snap.docs) Enrollment.tryParse(d.data()),
+              ].whereType<Enrollment>().toList();
+              emit();
+            }, onError: controller.addError),
+          )
+          ..add(
             mine('justifications').snapshots().listen((snap) {
               justifications = [
                 for (final d in snap.docs) Justification.tryParse(d.data()),
@@ -201,47 +213,75 @@ class FirebaseTeacherBackend extends TeacherBackend {
     return controller.stream;
   }
 
-  @override
-  Future<RosterLink> linkRoster(List<RosterEntry> roster) async {
-    final mismatches = <String>[];
-    final linked = await Future.wait([
-      for (final e in roster)
-        _db.collection('codes').doc(e.code).get().timeout(_timeout).then((d) {
-          final data = d.data();
-          if (data == null) return e.withUid(null);
-          final email = (data['email'] as String? ?? '').toLowerCase();
-          if (e.email.isNotEmpty && email != e.email.toLowerCase()) {
-            mismatches.add(e.code);
-            return e.withUid(null);
-          }
-          return RosterEntry(
-            code: e.code,
-            name: e.name,
-            email: e.email.isEmpty ? email : e.email,
-            uid: data['uid'] as String?,
-          );
-        }),
-    ]);
-    return RosterLink(entries: linked, mismatches: mismatches);
+  Map<String, Object?> _courseData(Course course) =>
+      course.toMap()..['teacherUid'] = _uid;
+
+  /// Escribe un cambio de la lista en [batch]. `statusAt` y `createdAt` los
+  /// pone el servidor (lo exigen las reglas).
+  void _write(WriteBatch batch, EnrollmentChange change) {
+    final e = change.target;
+    final ref = _db.collection('enrollments').doc(e.id);
+    final data = <String, Object?>{
+      'code': e.code,
+      'name': e.name,
+      'program': e.program,
+      'source': e.source.id,
+      'teacherSeen': true,
+      if (change.statusChanged) ...{
+        'status': e.status.id,
+        'statusAt': FieldValue.serverTimestamp(),
+      },
+    };
+    if (change.isNew) {
+      batch.set(ref, {
+        ...data,
+        'courseId': e.courseId,
+        'teacherUid': _uid,
+        'email': e.email,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } else {
+      batch.update(ref, data);
+    }
   }
 
-  Map<String, Object?> _courseData(Course course) {
-    final students = {
-      for (final r in course.roster)
-        if (r.isLinked) r.uid!,
-    }.toList();
-    return course.copyWith(students: students).toMap()..['teacherUid'] = _uid;
+  /// Firestore acepta hasta 500 escrituras por lote.
+  static const _batchLimit = 450;
+
+  Future<void> _commit(
+    List<EnrollmentChange> changes, {
+    void Function(WriteBatch first)? before,
+  }) async {
+    var i = 0;
+    do {
+      final batch = _db.batch();
+      if (i == 0) before?.call(batch);
+      for (final c in changes.skip(i).take(_batchLimit)) {
+        _write(batch, c);
+      }
+      await batch.commit().timeout(_timeout);
+      i += _batchLimit;
+    } while (i < changes.length);
   }
 
   @override
-  Future<String> createCourse(Course course) async {
+  Future<String> createCourse(
+    Course course, {
+    List<Enrollment> roster = const [],
+  }) async {
     final ref = _db.collection('courses').doc();
-    await ref
-        .set({
-          ..._courseData(course),
-          'createdAt': FieldValue.serverTimestamp(),
-        })
-        .timeout(_timeout);
+    final changes = RosterPlan.diff(const [], [
+      for (final e in roster) e.withCourseId(ref.id),
+    ]);
+    // La asignatura va en el primer lote: las reglas de las matrículas la
+    // consultan con getAfter().
+    await _commit(
+      changes,
+      before: (batch) => batch.set(ref, {
+        ..._courseData(course),
+        'createdAt': FieldValue.serverTimestamp(),
+      }),
+    );
     return ref.id;
   }
 
@@ -253,8 +293,35 @@ class FirebaseTeacherBackend extends TeacherBackend {
       .timeout(_timeout);
 
   @override
-  Future<void> deleteCourse(String courseId) =>
-      _db.collection('courses').doc(courseId).delete().timeout(_timeout);
+  Future<void> applyRosterChanges(
+    Course course,
+    List<EnrollmentChange> changes,
+  ) async {
+    if (changes.isEmpty) return;
+    await _commit(changes);
+  }
+
+  @override
+  Future<void> deleteCourse(Course course, List<Enrollment> enrollments) async {
+    final refs = [
+      for (final e in enrollments) _db.collection('enrollments').doc(e.id),
+    ];
+    for (var i = 0; i < refs.length; i += _batchLimit) {
+      final batch = _db.batch();
+      for (final r in refs.skip(i).take(_batchLimit)) {
+        batch.delete(r);
+      }
+      await batch.commit().timeout(_timeout);
+    }
+    await _db.collection('courses').doc(course.id).delete().timeout(_timeout);
+  }
+
+  @override
+  Future<void> markAlertSeen(Enrollment enrollment) => _db
+      .collection('enrollments')
+      .doc(enrollment.id)
+      .update({'teacherSeen': true})
+      .timeout(_timeout);
 
   @override
   Future<CourseSession> startSession(Course course, int minutes) async {
@@ -283,32 +350,31 @@ class FirebaseTeacherBackend extends TeacherBackend {
       .timeout(_timeout);
 
   @override
-  Future<void> markManualAttendance(CourseSession session, String studentUid) =>
-      _db
-          .collection('attendance')
-          .doc(AttendanceRecord.docId(session.id, studentUid))
-          .set({
-            'studentUid': studentUid,
-            'courseId': session.courseId,
-            'sessionId': session.id,
-            'teacherUid': _uid,
-            'method': AttendanceMethod.manual.id,
-            'registeredAt': FieldValue.serverTimestamp(),
-          })
-          .timeout(_timeout);
+  Future<void> markManualAttendance(CourseSession session, String email) => _db
+      .collection('attendance')
+      .doc(AttendanceRecord.docId(session.id, email))
+      .set({
+        'email': email.toLowerCase(),
+        'courseId': session.courseId,
+        'sessionId': session.id,
+        'teacherUid': _uid,
+        'method': AttendanceMethod.manual.id,
+        'registeredAt': FieldValue.serverTimestamp(),
+      })
+      .timeout(_timeout);
 
   @override
   Future<void> setAbsenceStatus(
     CourseSession session,
-    String studentUid,
+    String email,
     AbsenceStatus status,
   ) => _db
       .collection('justifications')
-      .doc(Justification.docId(session.id, studentUid))
+      .doc(Justification.docId(session.id, email))
       .set({
         'sessionId': session.id,
         'courseId': session.courseId,
-        'studentUid': studentUid,
+        'email': email.toLowerCase(),
         'teacherUid': _uid,
         'status': status.id,
         'updatedAt': FieldValue.serverTimestamp(),

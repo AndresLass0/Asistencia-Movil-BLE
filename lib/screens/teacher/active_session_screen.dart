@@ -90,7 +90,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
     if (!ok || !mounted) return;
     await runTeacherAction(
       context,
-      () => widget.backend.markManualAttendance(session, row.student.uid!),
+      () => widget.backend.markManualAttendance(session, row.student.email),
       done: '${row.student.name} registrado como presente.',
     );
   }
@@ -322,10 +322,10 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           _StudentTile(
             row: r,
             muted: true,
-            subtitle: r.linked
+            subtitle: r.enrolled
                 ? 'Aún no registra su asistencia'
-                : 'Sin cuenta en BioAsistencia',
-            trailing: r.linked && s.statusOpen
+                : r.student.status.label,
+            trailing: r.enrolled && s.statusOpen
                 ? TextButton(
                     onPressed: () => _markPresent(s, r),
                     child: const Text('Marcar presente'),

@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/academic_snapshot.dart';
 import '../models/course.dart';
+import '../models/enrollment.dart';
 import '../models/user_profile.dart';
 import 'academic_service.dart';
 import 'attendance_service.dart';
@@ -16,8 +17,16 @@ abstract class StudentBackend {
   const StudentBackend();
 
   Stream<UserProfile?> watchProfile(String uid);
-  Stream<AcademicSnapshot> watchAcademic(String uid);
+
+  /// Datos académicos del estudiante con ese correo institucional.
+  Stream<AcademicSnapshot> watchAcademic(String email);
   Future<AttendanceResult> registerAttendance(String uid, Course course);
+
+  /// Aceptar o rechazar una invitación, o cancelar la asignatura.
+  Future<void> setEnrollmentStatus(
+    Enrollment enrollment,
+    EnrollmentStatus status,
+  );
   Future<void> reportIncident({
     required String uid,
     required String courseId,
@@ -44,13 +53,27 @@ class FirebaseStudentBackend extends StudentBackend {
   Stream<UserProfile?> watchProfile(String uid) =>
       UserProfileService.watch(uid);
 
+  /// Correo de la sesión actual: es el que comprueban las reglas.
+  static String get _email =>
+      (FirebaseAuth.instance.currentUser?.email ?? '').toLowerCase();
+
   @override
-  Stream<AcademicSnapshot> watchAcademic(String uid) =>
-      AcademicService.watch(uid);
+  Stream<AcademicSnapshot> watchAcademic(String email) =>
+      AcademicService.watch(email);
 
   @override
   Future<AttendanceResult> registerAttendance(String uid, Course course) =>
-      AttendanceService.registerForCourse(uid: uid, course: course);
+      AttendanceService.registerForCourse(
+        uid: uid,
+        email: _email,
+        course: course,
+      );
+
+  @override
+  Future<void> setEnrollmentStatus(
+    Enrollment enrollment,
+    EnrollmentStatus status,
+  ) => AcademicService.setMyStatus(enrollment, status);
 
   @override
   Future<void> reportIncident({
@@ -61,6 +84,7 @@ class FirebaseStudentBackend extends StudentBackend {
     String teacherUid = '',
   }) => AttendanceService.reportIncident(
     uid: uid,
+    email: _email,
     courseId: courseId,
     message: message,
     sessionId: sessionId,

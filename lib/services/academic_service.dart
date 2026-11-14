@@ -6,13 +6,15 @@ import '../models/academic_snapshot.dart';
 import '../models/attendance_record.dart';
 import '../models/course.dart';
 import '../models/course_session.dart';
+import '../models/enrollment.dart';
 
 /// Lectura en tiempo real de los datos académicos del estudiante.
 ///
 /// Colecciones (ver `docs/MODELO_DE_DATOS.md` y `firestore.rules`):
-/// - `courses`   : asignaturas; `students` contiene los uid matriculados.
-/// - `sessions`  : sesiones de clase (`courseId`, `status`, `startsAt`…).
-/// - `attendance`: una asistencia por estudiante y sesión.
+/// - `enrollments`: sus matrículas (`email == su correo`).
+/// - `courses`    : cada asignatura de una matrícula visible (por id).
+/// - `sessions`   : sesiones de esas asignaturas.
+/// - `attendance` : sus asistencias (`email == su correo`).
 class AcademicService {
   AcademicService._();
 
@@ -21,27 +23,34 @@ class AcademicService {
   /// Firestore admite como máximo 30 valores en un filtro `whereIn`.
   static const _whereInLimit = 30;
 
-  /// Emite un [AcademicSnapshot] cada vez que cambia cualquiera de las tres
+  /// Emite un [AcademicSnapshot] cada vez que cambia cualquiera de las
   /// fuentes. Los errores (p. ej. reglas sin publicar) se propagan.
-  static Stream<AcademicSnapshot> watch(String uid) {
+  static Stream<AcademicSnapshot> watch(String email) {
+    final me = email.trim().toLowerCase();
     late StreamController<AcademicSnapshot> controller;
-    StreamSubscription? coursesSub, attendanceSub;
+    StreamSubscription? enrollmentsSub, attendanceSub;
+    final courseSubs = <String, StreamSubscription>{};
     final sessionSubs = <StreamSubscription>[];
 
-    List<Course>? courses;
+    List<Enrollment>? enrollments;
     List<AttendanceRecord>? attendance;
+    final courses = <String, Course?>{}; // null = aún sin leer o eliminada
+    final loaded = <String>{};
     var sessionChunks = <int, List<CourseSession>>{};
     var expectedChunks = 0;
+    var sessionIds = <String>[];
     var fromCache = false;
 
     void emit() {
-      if (courses == null || attendance == null) return;
+      if (enrollments == null || attendance == null) return;
+      if (loaded.length < courseSubs.length) return;
       if (sessionChunks.length < expectedChunks) return;
       controller.add(
         AcademicSnapshot(
-          courses: courses!,
+          courses: courses.values.whereType<Course>().toList(),
           sessions: [for (final c in sessionChunks.values) ...c],
           attendance: attendance!,
+          enrollments: enrollments!,
           isFromCache: fromCache,
         ),
       );
@@ -53,6 +62,7 @@ class AcademicService {
       }
       sessionSubs.clear();
       sessionChunks = {};
+      sessionIds = ids;
       expectedChunks = (ids.length / _whereInLimit).ceil();
       for (var i = 0; i < expectedChunks; i++) {
         final chunk = ids.skip(i * _whereInLimit).take(_whereInLimit).toList();
@@ -70,39 +80,59 @@ class AcademicService {
               }, onError: controller.addError),
         );
       }
-      emit();
+    }
+
+    void sync(List<Enrollment> list) {
+      final visible = {
+        for (final e in list)
+          if (e.status.studentCanSee) e.courseId,
+      };
+      for (final id in courseSubs.keys.toList()) {
+        if (visible.contains(id)) continue;
+        courseSubs.remove(id)?.cancel();
+        courses.remove(id);
+        loaded.remove(id);
+      }
+      for (final id in visible) {
+        if (courseSubs.containsKey(id)) continue;
+        courseSubs[id] = _db.collection('courses').doc(id).snapshots().listen((
+          doc,
+        ) {
+          final data = doc.data();
+          courses[id] = data == null ? null : Course.fromMap(doc.id, data);
+          loaded.add(id);
+          emit();
+        }, onError: controller.addError);
+      }
+      // Las invitaciones no necesitan sesiones.
+      final withSessions = [
+        for (final e in list)
+          if (e.status.studentCanSee && e.status != EnrollmentStatus.invited)
+            e.courseId,
+      ]..sort();
+      if (withSessions.join(',') != sessionIds.join(',')) {
+        watchSessions(withSessions);
+      }
     }
 
     controller = StreamController<AcademicSnapshot>(
       onListen: () {
-        coursesSub = _db
-            .collection('courses')
-            .where('students', arrayContains: uid)
+        enrollmentsSub = _db
+            .collection('enrollments')
+            .where('email', isEqualTo: me)
             .snapshots(includeMetadataChanges: true)
             .listen((snap) {
               fromCache = snap.metadata.isFromCache;
-              final next = [
-                for (final d in snap.docs) Course.fromMap(d.id, d.data()),
-              ];
-              final idsChanged =
-                  courses == null ||
-                  next
-                      .map((c) => c.id)
-                      .toSet()
-                      .difference(courses!.map((c) => c.id).toSet())
-                      .isNotEmpty ||
-                  next.length != courses!.length;
-              courses = next;
-              if (idsChanged) {
-                watchSessions([for (final c in next) c.id]);
-              } else {
-                emit();
-              }
+              enrollments = [
+                for (final d in snap.docs) Enrollment.tryParse(d.data()),
+              ].whereType<Enrollment>().toList();
+              sync(enrollments!);
+              emit();
             }, onError: controller.addError);
 
         attendanceSub = _db
             .collection('attendance')
-            .where('studentUid', isEqualTo: uid)
+            .where('email', isEqualTo: me)
             .snapshots()
             .listen((snap) {
               attendance = [
@@ -113,8 +143,11 @@ class AcademicService {
             }, onError: controller.addError);
       },
       onCancel: () async {
-        await coursesSub?.cancel();
+        await enrollmentsSub?.cancel();
         await attendanceSub?.cancel();
+        for (final s in courseSubs.values) {
+          await s.cancel();
+        }
         for (final s in sessionSubs) {
           await s.cancel();
         }
@@ -122,4 +155,20 @@ class AcademicService {
     );
     return controller.stream;
   }
+
+  /// El estudiante acepta o rechaza una invitación, o cancela la
+  /// asignatura. Las reglas solo permiten esas transiciones sobre su propia
+  /// matrícula.
+  static Future<void> setMyStatus(
+    Enrollment enrollment,
+    EnrollmentStatus status,
+  ) => _db
+      .collection('enrollments')
+      .doc(enrollment.id)
+      .update({
+        'status': status.id,
+        'statusAt': FieldValue.serverTimestamp(),
+        'teacherSeen': false,
+      })
+      .timeout(const Duration(seconds: 15));
 }

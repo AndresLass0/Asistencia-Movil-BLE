@@ -15,20 +15,28 @@ enum AttendanceMethod {
       id == manual.id ? manual : session;
 }
 
-/// Asistencia registrada (`attendance/{sessionId}_{uid}`).
+/// Asistencia registrada (`attendance/{sessionId}_{correo}`).
+///
+/// El estudiante se identifica por su correo institucional (igual que en
+/// `enrollments`), así el docente puede registrar manualmente a quien aún no
+/// tiene cuenta.
 class AttendanceRecord {
   const AttendanceRecord({
     required this.id,
-    required this.studentUid,
+    required this.email,
     required this.courseId,
     required this.sessionId,
     required this.registeredAt,
     this.method = AttendanceMethod.session,
     this.teacherUid = '',
+    this.studentUid = '',
+    this.deviceKey = '',
   });
 
   final String id;
-  final String studentUid;
+
+  /// Correo institucional del estudiante (minúsculas).
+  final String email;
   final String courseId;
   final String sessionId;
   final DateTime registeredAt;
@@ -37,14 +45,23 @@ class AttendanceRecord {
   /// Docente de la asignatura (permite que lo consulte en sus reportes).
   final String teacherUid;
 
+  /// uid del estudiante, solo si la registró él mismo desde la app.
+  final String studentUid;
+
+  /// Huella del celular desde el que se registró (vacía si es manual).
+  final String deviceKey;
+
   /// Id del documento: una sola asistencia por estudiante y sesión.
-  static String docId(String sessionId, String uid) => '${sessionId}_$uid';
+  static String docId(String sessionId, String email) =>
+      '${sessionId}_${email.trim().toLowerCase()}';
 
   factory AttendanceRecord.fromMap(String id, Map<String, dynamic> map) {
     final ts = map['registeredAt'];
     return AttendanceRecord(
       id: id,
+      email: (map['email'] as String? ?? '').toLowerCase(),
       studentUid: map['studentUid'] as String? ?? '',
+      deviceKey: map['deviceKey'] as String? ?? '',
       courseId: map['courseId'] as String? ?? '',
       sessionId: map['sessionId'] as String? ?? '',
       // Escritura pendiente (sin hora del servidor todavía): hora local.

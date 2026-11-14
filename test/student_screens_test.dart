@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:proyecto_asistencia/models/academic_snapshot.dart';
 import 'package:proyecto_asistencia/models/course.dart';
+import 'package:proyecto_asistencia/models/enrollment.dart';
 import 'package:proyecto_asistencia/models/user_profile.dart';
 import 'package:proyecto_asistencia/screens/attendance/attendance_failed_screen.dart';
 import 'package:proyecto_asistencia/screens/attendance/attendance_success_screen.dart';
@@ -417,6 +418,38 @@ void main() {
 
   // Desbordamientos en pantallas estrechas con texto ampliado.
   expectNoOverflow('Inicio', () => _dashboard(_data));
+  expectNoOverflow(
+    'Inicio con invitación',
+    () => _dashboard(
+      AcademicState.data(
+        AcademicSnapshot(
+          courses: [
+            programming,
+            course(id: 'inv', name: 'Estructuras de Datos Avanzadas II'),
+          ],
+          sessions: const [],
+          attendance: const [],
+          enrollments: [
+            Enrollment(
+              courseId: 'inv',
+              email: email,
+              code: '12345',
+              name: 'Ana',
+              status: EnrollmentStatus.invited,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+  expectNoOverflow(
+    'Fallo: celular ya usado',
+    () => AttendanceFailedScreen(
+      course: programming,
+      failure: AttendanceFailure.deviceInUse,
+      uid: uid,
+    ),
+  );
   expectNoOverflow(
     'Mis Clases',
     () => ClassesTab(

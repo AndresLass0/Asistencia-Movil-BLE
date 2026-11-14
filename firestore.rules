@@ -106,33 +106,52 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    function enrolled(courseId) {
-      return request.auth.uid in courseDoc(courseId).data.students;
+    // ----------------------------------------------------------------
+    // Matrículas. El estudiante se identifica por su correo institucional
+    // (minúsculas), que es lo que comparten la lista oficial y la cuenta.
+
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function enrollmentPath(courseId, email) {
+      return /databases/$(database)/documents/enrollments/$(courseId + '_' + email);
+    }
+
+    // Estado de la matrícula del usuario en la asignatura ('' si no tiene).
+    function myEnrollmentStatus(courseId) {
+      return exists(enrollmentPath(courseId, myEmail()))
+        ? get(enrollmentPath(courseId, myEmail())).data.status
+        : '';
+    }
+
+    // Matriculado ahora (puede registrar asistencia).
+    function activeIn(courseId) {
+      return verified() && myEnrollmentStatus(courseId) == 'active';
     }
 
     function validCourse(d) {
       return d.keys().hasOnly(['name', 'period', 'group', 'teacherName',
                'teacherUid', 'room', 'building', 'code', 'schedule',
-               'maxAbsences', 'registrationMinutes', 'roster', 'students',
-               'createdAt'])
+               'maxAbsences', 'registrationMinutes', 'createdAt'])
         && d.teacherUid == request.auth.uid
         && d.name is string && d.name.size() > 0 && d.name.size() <= 120
         && d.period is string && d.period.size() <= 20
         && d.schedule is list && d.schedule.size() <= 14
-        && d.roster is list && d.roster.size() <= 300
-        && d.students is list && d.students.size() <= 300
         && (d.maxAbsences == null || (d.maxAbsences is int && d.maxAbsences >= 0))
         && d.registrationMinutes is int
         && d.registrationMinutes > 0 && d.registrationMinutes <= 240;
     }
 
-    // Asignaturas: el estudiante ve aquellas en las que está matriculado
-    // (where students arrayContains uid); el docente, las suyas (where
-    // teacherUid == uid). Solo el docente dueño las crea, edita o elimina.
+    // Asignaturas: un grupo de una materia con un docente. El docente lee
+    // las suyas (where teacherUid == uid); el estudiante, cada una por id si
+    // tiene una matrícula visible (activa, invitada, cancelada o retirada).
     match /courses/{courseId} {
-      allow read: if verified()
-        && (request.auth.uid in resource.data.students
-            || resource.data.get('teacherUid', '') == request.auth.uid);
+      allow read: if signedIn()
+        && ((resource == null && verified())
+            || resource.data.get('teacherUid', '') == request.auth.uid
+            || (verified()
+                && myEnrollmentStatus(courseId) in ['active', 'invited', 'withdrawn', 'removed']));
       allow create: if isTeacher()
         && validCourse(request.resource.data)
         && request.resource.data.createdAt == request.time;
@@ -142,6 +161,78 @@ service cloud.firestore {
         && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null);
       allow delete: if isTeacher()
         && resource.data.get('teacherUid', '') == request.auth.uid;
+    }
+
+    function validEnrollmentData(d) {
+      return d.code is string && d.code.matches('^[0-9]{5,15}$')
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 120
+        && d.program is string && d.program.size() <= 120
+        && d.source in ['import', 'manual']
+        && d.teacherSeen is bool;
+    }
+
+    // Dueño de la asignatura según el estado al terminar el lote: permite
+    // crear la asignatura y su lista en la misma operación.
+    function teachesCourseAfter(courseId) {
+      return isTeacher()
+        && getAfter(/databases/$(database)/documents/courses/$(courseId)).data.get('teacherUid', '') == request.auth.uid;
+    }
+
+    // Cambios de estado que puede hacer el docente.
+    function teacherTransition(from, to) {
+      return (from in ['invited', 'removed'] && to == 'active')
+        || (from in ['declined', 'withdrawn', 'removed'] && to == 'invited')
+        || (from in ['active', 'invited'] && to == 'removed');
+    }
+
+    // Matrícula: id "{courseId}_{correo}". El docente dueño la crea (activa
+    // si viene de una lista importada; invitación si la agrega a mano), la
+    // actualiza y la borra al eliminar la asignatura. El estudiante solo lee
+    // la suya y solo puede aceptar/rechazar la invitación o cancelar.
+    match /enrollments/{enrollmentId} {
+      allow read: if signedIn()
+        && ((resource.data.teacherUid == request.auth.uid && isTeacher())
+            || (verified() && resource.data.email == myEmail()));
+
+      allow create: if teachesCourseAfter(request.resource.data.courseId)
+        && request.resource.data.keys().hasOnly(
+             ['courseId', 'teacherUid', 'email', 'code', 'name', 'program',
+              'status', 'source', 'createdAt', 'statusAt', 'teacherSeen'])
+        && request.resource.data.teacherUid == request.auth.uid
+        && request.resource.data.email is string
+        && request.resource.data.email.matches('^[^@ ]+@udla[.]edu[.]co$')
+        && request.resource.data.email == request.resource.data.email.lower()
+        && enrollmentId == request.resource.data.courseId + '_' + request.resource.data.email
+        && validEnrollmentData(request.resource.data)
+        && ((request.resource.data.source == 'import' && request.resource.data.status == 'active')
+            || (request.resource.data.source == 'manual' && request.resource.data.status == 'invited'))
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.statusAt == request.time;
+
+      // Docente: datos de la lista, aviso visto y transiciones permitidas.
+      allow update: if resource.data.teacherUid == request.auth.uid
+        && teachesCourse(resource.data.courseId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['code', 'name', 'program', 'source', 'teacherSeen', 'status', 'statusAt'])
+        && validEnrollmentData(request.resource.data)
+        && (request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+            ? (teacherTransition(resource.data.status, request.resource.data.status)
+               && request.resource.data.statusAt == request.time)
+            : !request.resource.data.diff(resource.data).affectedKeys().hasAny(['statusAt']));
+
+      // Estudiante: aceptar o rechazar la invitación, o cancelar.
+      allow update: if verified()
+        && resource.data.email == myEmail()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'statusAt', 'teacherSeen'])
+        && request.resource.data.statusAt == request.time
+        && request.resource.data.teacherSeen == false
+        && ((resource.data.status == 'invited'
+             && request.resource.data.status in ['active', 'declined'])
+            || (resource.data.status == 'active'
+                && request.resource.data.status == 'withdrawn'));
+
+      allow delete: if resource.data.teacherUid == request.auth.uid && isTeacher();
     }
 
     // Sesiones de asistencia. Lectura para usuarios verificados (solo
@@ -169,71 +260,99 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Asistencias: id = "{sessionId}_{uid}" => una por estudiante y sesión.
-    // - El estudiante la crea solo si la sesión está abierta y dentro de su
-    //   ventana (endsAt) y está matriculado en la asignatura.
+    // Un celular registra a un solo estudiante por sesión.
+    // id = "{sessionId}_{huella}" (SHA-256 del identificador del celular).
+    // Se crea en el mismo lote que la asistencia del estudiante; como
+    // "create" solo funciona si no existe, un segundo estudiante en el mismo
+    // celular y la misma sesión es rechazado. La lectura individual sirve
+    // para que la app explique el rechazo; nadie puede listarla.
+    match /sessionDevices/{deviceId} {
+      allow get: if verified();
+      allow list, update, delete: if false;
+      allow create: if verified()
+        && request.resource.data.keys().hasOnly(['email', 'sessionId', 'createdAt'])
+        && request.resource.data.email == myEmail()
+        && request.resource.data.sessionId is string
+        && request.resource.data.sessionId.matches('^[A-Za-z0-9]+$')
+        && deviceId.matches('^' + request.resource.data.sessionId + '_[0-9a-f]{64}$')
+        && request.resource.data.createdAt == request.time
+        && existsAfter(/databases/$(database)/documents/attendance/$(request.resource.data.sessionId + '_' + myEmail()));
+    }
+
+    // Asistencias: id = "{sessionId}_{correo}" => una por estudiante y sesión.
+    // - El estudiante la crea con su matrícula activa, la sesión abierta y
+    //   dentro de su ventana (endsAt), desde un celular que no haya
+    //   registrado a otro estudiante en la sesión (sessionDevices).
     // - El docente dueño puede añadir una asistencia manual (excepción) de
-    //   un estudiante matriculado.
+    //   un estudiante matriculado, aunque todavía no tenga cuenta.
     // El estudiante lee las suyas y el docente las de sus asignaturas.
     match /attendance/{recordId} {
       allow read: if signedIn()
-        && (resource.data.studentUid == request.auth.uid
+        && ((verified() && resource.data.email == myEmail())
             || (resource.data.get('teacherUid', '') == request.auth.uid && isTeacher()));
       allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(
-             ['studentUid', 'courseId', 'sessionId', 'registeredAt',
-              'teacherUid', 'method'])
-        && recordId == request.resource.data.sessionId + '_' + request.resource.data.studentUid
+        && request.resource.data.email is string
+        && recordId == request.resource.data.sessionId + '_' + request.resource.data.email
         && request.resource.data.registeredAt == request.time
         && sessionDoc(request.resource.data.sessionId).data.courseId == request.resource.data.courseId
         && request.resource.data.teacherUid == courseDoc(request.resource.data.courseId).data.get('teacherUid', '')
         && (
           // Registro del estudiante durante la sesión.
-          (request.resource.data.studentUid == request.auth.uid
-            && verified()
+          (request.resource.data.keys().hasOnly(
+              ['email', 'studentUid', 'courseId', 'sessionId', 'registeredAt',
+               'teacherUid', 'method', 'deviceKey'])
             && request.resource.data.method == 'session'
+            && request.resource.data.email == myEmail()
+            && request.resource.data.studentUid == request.auth.uid
+            && request.resource.data.deviceKey is string
+            && request.resource.data.deviceKey.matches('^[0-9a-f]{64}$')
+            && activeIn(request.resource.data.courseId)
             && sessionDoc(request.resource.data.sessionId).data.status == 'open'
             && request.time < sessionDoc(request.resource.data.sessionId).data.get('endsAt', request.time + duration.value(1, 'd'))
-            && enrolled(request.resource.data.courseId))
+            && getAfter(/databases/$(database)/documents/sessionDevices/$(request.resource.data.sessionId + '_' + request.resource.data.deviceKey)).data.email == myEmail())
           ||
           // Excepción registrada por el docente.
-          (request.resource.data.method == 'manual'
+          (request.resource.data.keys().hasOnly(
+              ['email', 'courseId', 'sessionId', 'registeredAt', 'teacherUid', 'method'])
+            && request.resource.data.method == 'manual'
             && teachesCourse(request.resource.data.courseId)
-            && request.resource.data.studentUid in courseDoc(request.resource.data.courseId).data.students)
+            && get(enrollmentPath(request.resource.data.courseId, request.resource.data.email)).data.status == 'active')
         );
       allow update, delete: if false;
     }
 
     // Revisión de inasistencias por el docente (justificada / confirmada).
-    // id = "{sessionId}_{studentUid}".
+    // id = "{sessionId}_{correo}".
     match /justifications/{id} {
       allow read: if signedIn()
-        && (resource.data.studentUid == request.auth.uid
+        && ((verified() && resource.data.email == myEmail())
             || (resource.data.teacherUid == request.auth.uid && isTeacher()));
       allow create, update: if teachesCourse(request.resource.data.courseId)
         && request.resource.data.keys().hasOnly(
-             ['sessionId', 'courseId', 'studentUid', 'teacherUid', 'status', 'updatedAt'])
-        && id == request.resource.data.sessionId + '_' + request.resource.data.studentUid
+             ['sessionId', 'courseId', 'email', 'teacherUid', 'status', 'updatedAt'])
+        && id == request.resource.data.sessionId + '_' + request.resource.data.email
         && request.resource.data.teacherUid == request.auth.uid
         && request.resource.data.status in ['justified', 'confirmed']
         && request.resource.data.updatedAt == request.time
         && sessionDoc(request.resource.data.sessionId).data.courseId == request.resource.data.courseId
-        && request.resource.data.studentUid in courseDoc(request.resource.data.courseId).data.students;
+        && exists(enrollmentPath(request.resource.data.courseId, request.resource.data.email));
       allow delete: if false;
     }
 
-    // Reportes de incidencias para el docente. El estudiante matriculado
-    // los crea; el docente de la asignatura los consulta. No se editan.
+    // Reportes de incidencias para el docente. Los crea el estudiante con
+    // matrícula activa (o que canceló); el docente de la asignatura los
+    // consulta. No se editan.
     match /incidents/{incidentId} {
       allow create: if verified()
         && request.resource.data.keys().hasOnly(
-             ['studentUid', 'courseId', 'sessionId', 'message', 'createdAt', 'teacherUid'])
+             ['studentUid', 'email', 'courseId', 'sessionId', 'message', 'createdAt', 'teacherUid'])
         && request.resource.data.studentUid == request.auth.uid
+        && request.resource.data.email == myEmail()
         && request.resource.data.message is string
         && request.resource.data.message.size() <= 500
         && request.resource.data.createdAt == request.time
         && request.resource.data.get('teacherUid', '') == courseDoc(request.resource.data.courseId).data.get('teacherUid', '')
-        && enrolled(request.resource.data.courseId);
+        && myEnrollmentStatus(request.resource.data.courseId) in ['active', 'withdrawn'];
       allow read: if signedIn()
         && resource.data.get('teacherUid', '') == request.auth.uid
         && isTeacher();

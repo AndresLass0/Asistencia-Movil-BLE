@@ -78,7 +78,7 @@ Avatar, nombre, correo, rol, código, nivel académico (semestre o "Sin registra
 
 ## 4. Vistas del docente
 
-Todas usan datos de `TeacherBackend` (Firestore real o demostración) y muestran estados de carga, error y vacío. Diseño de referencia y decisiones: AUDITORIA §9.
+Todas usan datos de `TeacherBackend` (Firestore) y muestran estados de carga, error y vacío. Diseño de referencia y decisiones: AUDITORIA §9.
 
 ### Acceso — `teacher/teacher_gate.dart`
 Comprueba `teachers/{correo}` y el correo verificado. Avisos: "Cuenta docente pendiente de autorización" (Volver a comprobar) y "Verifica tu correo" (Reenviar correo, Ya lo verifiqué). Ambos con "Cerrar sesión".
@@ -88,10 +88,10 @@ Comprueba `teachers/{correo}` y el correo verificado. Avisos: "Cuenta docente pe
 **Hoja "Configurar duración":** 5/10/15/20 min (preseleccionada la de la clase), hora de inicio y de cierre, aviso si nadie de la lista tiene cuenta.
 
 ### Crear / Editar clase — `teacher/course_form_screen.dart`
-Nombre*, código, grupo, periodo* (AAAA-1/2), aula y edificio; franjas horarias (día + inicio y fin); **lista de estudiantes**: cargar .xlsx/.csv (código, nombre, correo; con o sin encabezados; informa filas omitidas), descargar plantilla .xlsx, añadir a mano, quitar; duración predeterminada del registro; faltas permitidas (opcional). Al guardar vincula los códigos con cuentas existentes e informa cuántos quedaron vinculados.
+Nombre*, código, grupo, periodo* (AAAA-1/2), aula y edificio; franjas horarias (día + inicio y fin); **lista de estudiantes**: cargar .xlsx/.csv (código, nombre, **correo institucional** obligatorio y programa opcional; reconoce los encabezados de la UDLA como `CODIGOESTUDIANTE`, `NOMBRECOMPLETO`, `MAIL_INST`, `PROGRAMA`) con **vista previa** (nuevos, vuelven, actualizados, sin cambios, salen (también los agregados a mano que no vienen en el archivo), cancelados que siguen en el archivo y filas omitidas con su motivo) que reemplaza la lista al aplicar; descargar plantilla .xlsx; **invitar a un estudiante** a mano (queda "Invitación pendiente" hasta que acepte); quitar; sección "Cancelaron o rechazaron" con "Invitar" de nuevo; duración predeterminada del registro; faltas permitidas (opcional). Nada se guarda hasta pulsar el botón final, que escribe solo las diferencias.
 
 ### Sesión activa — `teacher/active_session_screen.dart`
-Estado (registro abierto / tiempo cumplido / finalizada), cuenta atrás, hora de inicio, aula, aviso de que no hay verificación por proximidad, progreso presentes/total. Lista con búsqueda: **Presentes** (hora; "Desde la app" o "Registro manual") y **Pendientes** ("Marcar presente" con confirmación, o "Sin cuenta en BioAsistencia"). **Finalizar asistencia** con confirmación → Resumen.
+Estado (registro abierto / tiempo cumplido / finalizada), cuenta atrás, hora de inicio, aula, aviso de que no hay verificación por proximidad, progreso presentes/total. Lista con búsqueda: **Presentes** (hora; "Desde la app" o "Registro manual") y **Pendientes** ("Marcar presente" con confirmación, también para quien aún no tiene cuenta). **Finalizar asistencia** con confirmación → Resumen.
 
 ### Resumen de asistencia — `teacher/session_summary_screen.dart`
 Estado, asignatura, fecha y horas, presentes (%), ausentes, total. **Ausentes** con Justificar / Confirmar falta (cambiable). Presentes plegables. Descargar planilla PDF, planilla Excel y "Consultar historial de clases" (pestaña 1).
@@ -116,6 +116,9 @@ Nombre, correo, rol, código, facultad y sede ("Sin registrar" si faltan); resum
 | F5 Cerrar sesión | Perfil → confirmar → Login |
 | F0 Alta de cuenta | Registro → correo de verificación → abrir enlace → "Ya lo verifiqué" → vista del rol |
 | D1 Acceso docente | Administración crea `teachers/{correo}` → registro como Docente → verificar correo → TeacherGate → Clases |
-| D2 Crear clase | Clases → Crear clase → datos, horario, lista (Excel/CSV o manual) → Guardar (vincula códigos) |
+| D2 Crear clase | Clases → Crear clase → datos, horario, lista (Excel/CSV con vista previa, o invitar a mano) → Guardar |
+| D6 Avisos | Campana → sesiones abiertas y "{estudiante} canceló / rechazó" → Visto |
+| F6 Invitación | Inicio o campana → "Prof. X te agregó a…" → Aceptar (pasa a Mis Clases) o Rechazar (el docente recibe el aviso) |
+| F7 Cancelar asignatura | Detalle de la asignatura → Cancelar asignatura → confirmar → solo queda en el historial; el docente recibe el aviso |
 | D3 Tomar asistencia | Clases → Iniciar asistencia → duración → Sesión activa (presentes en vivo, excepciones) → Finalizar → Resumen → justificar o confirmar → PDF/Excel |
 | D4 Consultar | Historial (por mes y asignatura) · Reportes (periodo, riesgo, incidencias, consolidado) |

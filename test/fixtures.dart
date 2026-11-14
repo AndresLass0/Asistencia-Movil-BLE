@@ -8,6 +8,7 @@ import 'package:proyecto_asistencia/models/course_session.dart';
 final testNow = DateTime(2026, 11, 2, 18, 30);
 
 const uid = 'u1';
+const email = 'estudiante@udla.edu.co';
 
 Course course({
   required String id,
@@ -36,7 +37,8 @@ CourseSession session(
 
 AttendanceRecord record(String sessionId, String courseId, DateTime at) =>
     AttendanceRecord(
-      id: AttendanceRecord.docId(sessionId, uid),
+      id: AttendanceRecord.docId(sessionId, email),
+      email: email,
       studentUid: uid,
       courseId: courseId,
       sessionId: sessionId,

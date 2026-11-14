@@ -82,8 +82,8 @@ class ReportService {
           ? 'Presente (manual)'
           : 'Presente';
     }
-    if (!r.linked) return 'Sin cuenta en BioAsistencia';
-    return r.justification?.status.label ?? 'Ausente';
+    final label = r.justification?.status.label ?? 'Ausente';
+    return r.enrolled ? label : '$label (${r.student.status.label})';
   }
 
   /// Filas de la planilla de una sesión (para PDF y Excel).
@@ -241,7 +241,7 @@ class ReportService {
                   return [
                     c.name,
                     c.group,
-                    '${c.enrolledCount}',
+                    '${data.enrolledCount(c.id)}',
                     '${r.heldSessions.length}',
                     _pct(r.percent),
                   ];

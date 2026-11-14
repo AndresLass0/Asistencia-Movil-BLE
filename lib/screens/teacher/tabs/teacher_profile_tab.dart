@@ -183,7 +183,7 @@ class TeacherProfileTab extends StatelessWidget {
               children: [
                 Text(
                   '${c.group.isEmpty ? '' : 'G${c.group} • '}'
-                  '${c.enrolledCount} estudiantes',
+                  '${data?.enrolledCount(c.id) ?? 0} estudiantes',
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,

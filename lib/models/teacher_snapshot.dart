@@ -2,6 +2,7 @@ import 'academic_snapshot.dart';
 import 'attendance_record.dart';
 import 'course.dart';
 import 'course_session.dart';
+import 'enrollment.dart';
 import 'incident.dart';
 import 'justification.dart';
 
@@ -9,14 +10,14 @@ import 'justification.dart';
 class AttendanceRow {
   const AttendanceRow({required this.student, this.record, this.justification});
 
-  final RosterEntry student;
+  final Enrollment student;
   final AttendanceRecord? record;
   final Justification? justification;
 
   bool get present => record != null;
 
-  /// Tiene cuenta en BioAsistencia (puede registrar asistencia).
-  bool get linked => student.isLinked;
+  /// Sigue en la lista de la asignatura (no canceló ni salió de ella).
+  bool get enrolled => student.isActive;
 }
 
 /// Planilla y totales de una sesión.
@@ -61,7 +62,7 @@ class StudentStanding {
   });
 
   final Course course;
-  final RosterEntry student;
+  final Enrollment student;
   final int attended;
   final int absences;
 
@@ -85,10 +86,14 @@ class CourseReport {
     required this.present,
     required this.possible,
     required this.standings,
+    this.enrolled = 0,
   });
 
   final Course course;
   final List<CourseSession> heldSessions;
+
+  /// Estudiantes matriculados ahora.
+  final int enrolled;
 
   /// Asistencias en las sesiones realizadas.
   final int present;
@@ -156,6 +161,7 @@ class TeacherSnapshot {
     required List<Course> courses,
     required List<CourseSession> sessions,
     required List<AttendanceRecord> attendance,
+    List<Enrollment> enrollments = const [],
     List<Justification> justifications = const [],
     List<Incident> incidents = const [],
     this.isFromCache = false,
@@ -163,22 +169,32 @@ class TeacherSnapshot {
   }) : courses = List.unmodifiable(courses),
        sessions = List.unmodifiable(sessions),
        attendance = List.unmodifiable(attendance),
+       enrollments = List.unmodifiable(enrollments),
        justifications = List.unmodifiable(justifications),
        incidents = List.unmodifiable(
          [...incidents]..sort((a, b) => b.createdAt.compareTo(a.createdAt)),
        ),
        _clock = clock ?? DateTime.now {
     for (final r in attendance) {
-      _recordsBySession.putIfAbsent(r.sessionId, () => {})[r.studentUid] = r;
+      _recordsBySession.putIfAbsent(r.sessionId, () => {})[r.email] = r;
     }
     for (final j in justifications) {
       _justifications[j.id] = j;
+    }
+    for (final e in enrollments) {
+      _enrollmentsByCourse.putIfAbsent(e.courseId, () => []).add(e);
+    }
+    for (final list in _enrollmentsByCourse.values) {
+      list.sort((a, b) => a.name.compareTo(b.name));
     }
   }
 
   final List<Course> courses;
   final List<CourseSession> sessions;
   final List<AttendanceRecord> attendance;
+
+  /// Matrículas de todas las asignaturas del docente (cualquier estado).
+  final List<Enrollment> enrollments;
   final List<Justification> justifications;
 
   /// Incidencias reportadas por los estudiantes, la más reciente primero.
@@ -188,6 +204,7 @@ class TeacherSnapshot {
 
   final Map<String, Map<String, AttendanceRecord>> _recordsBySession = {};
   final Map<String, Justification> _justifications = {};
+  final Map<String, List<Enrollment>> _enrollmentsByCourse = {};
 
   DateTime get now => _clock();
 
@@ -257,59 +274,76 @@ class TeacherSnapshot {
   Map<String, AttendanceRecord> recordsFor(String sessionId) =>
       _recordsBySession[sessionId] ?? const {};
 
-  Justification? justificationFor(String sessionId, String studentUid) =>
-      _justifications[Justification.docId(sessionId, studentUid)];
+  Justification? justificationFor(String sessionId, String email) =>
+      _justifications[Justification.docId(sessionId, email)];
 
-  /// Estudiantes de la planilla: la lista oficial, más los matriculados
-  /// que no están en ella (p. ej. añadidos desde la consola).
-  List<RosterEntry> studentsOf(Course course) {
-    final rosterUids = {
-      for (final r in course.roster)
-        if (r.isLinked) r.uid!,
-    };
-    return [
-      ...course.roster,
-      for (final uid in course.students)
-        if (!rosterUids.contains(uid))
-          RosterEntry(
-            code: '',
-            name: 'Estudiante sin datos en la lista',
-            uid: uid,
-          ),
-    ];
+  /// Todas las matrículas de la asignatura, por nombre.
+  List<Enrollment> enrollmentsOf(String courseId) =>
+      _enrollmentsByCourse[courseId] ?? const [];
+
+  /// Lista actual: matriculados e invitaciones pendientes.
+  List<Enrollment> currentListOf(String courseId) => [
+    for (final e in enrollmentsOf(courseId))
+      if (e.status.isCurrent) e,
+  ];
+
+  /// Matriculados ahora.
+  int enrolledCount(String courseId) =>
+      enrollmentsOf(courseId).where((e) => e.isActive).length;
+
+  Enrollment? enrollmentFor(String courseId, String email) {
+    for (final e in enrollmentsOf(courseId)) {
+      if (e.email == email) return e;
+    }
+    return null;
   }
+
+  /// Avisos para el docente: rechazos y cancelaciones sin revisar, el más
+  /// reciente primero.
+  List<Enrollment> get alerts {
+    final list = enrollments.where((e) => e.needsTeacherAttention).toList();
+    final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+    return list
+      ..sort((a, b) => (b.statusAt ?? epoch).compareTo(a.statusAt ?? epoch));
+  }
+
+  /// Si el estudiante debía estar en la planilla de [session].
+  bool _expected(Enrollment e, CourseSession session) =>
+      e.expectedAt(session) || (e.isActive && session.isOpenAt(now));
 
   SessionReport reportFor(CourseSession session) {
     final course =
         courseById(session.courseId) ??
         Course(id: session.courseId, name: 'Asignatura eliminada', period: '');
     final records = recordsFor(session.id);
-    final students = studentsOf(course);
     final known = <String>{};
     final rows = <AttendanceRow>[];
-    for (final st in students) {
-      final record = st.isLinked ? records[st.uid] : null;
-      if (st.isLinked) known.add(st.uid!);
+    for (final st in enrollmentsOf(course.id)) {
+      if (!_expected(st, session)) continue;
+      known.add(st.email);
       rows.add(
         AttendanceRow(
           student: st,
-          record: record,
-          justification: st.isLinked
-              ? justificationFor(session.id, st.uid!)
-              : null,
+          record: records[st.email],
+          justification: justificationFor(session.id, st.email),
         ),
       );
     }
-    // Asistencias de estudiantes que ya no están en la lista.
+    // Asistencias de estudiantes que no debían estar en la planilla (p. ej.
+    // quitados de la lista después de registrarse).
     for (final r in records.values) {
-      if (known.contains(r.studentUid)) continue;
+      if (known.contains(r.email)) continue;
       rows.add(
         AttendanceRow(
-          student: RosterEntry(
-            code: '',
-            name: 'Estudiante fuera de la lista',
-            uid: r.studentUid,
-          ),
+          student:
+              enrollmentFor(course.id, r.email) ??
+              Enrollment(
+                courseId: course.id,
+                email: r.email,
+                code: '',
+                name: 'Estudiante fuera de la lista',
+                status: EnrollmentStatus.removed,
+              ),
           record: r,
         ),
       );
@@ -319,7 +353,6 @@ class TeacherSnapshot {
 
   CourseReport reportForCourse(Course course) {
     final held = sessionsFor(course.id).where(isHeld).toList();
-    final students = studentsOf(course);
     var present = 0;
     var possible = 0;
     for (final s in held) {
@@ -328,18 +361,22 @@ class TeacherSnapshot {
       possible += r.total;
     }
     final standings = <StudentStanding>[
-      for (final st in students)
-        if (st.isLinked)
+      for (final st in enrollmentsOf(course.id))
+        if (st.isActive)
           () {
-            var attended = 0;
+            var attended = 0, absences = 0;
             for (final s in held) {
-              if (recordsFor(s.id).containsKey(st.uid)) attended++;
+              if (recordsFor(s.id).containsKey(st.email)) {
+                attended++;
+              } else if (st.expectedAt(s)) {
+                absences++;
+              }
             }
             return StudentStanding(
               course: course,
               student: st,
               attended: attended,
-              absences: held.length - attended,
+              absences: absences,
             );
           }(),
     ];
@@ -349,6 +386,7 @@ class TeacherSnapshot {
       present: present,
       possible: possible,
       standings: standings,
+      enrolled: enrolledCount(course.id),
     );
   }
 
@@ -357,7 +395,7 @@ class TeacherSnapshot {
     var students = 0, held = 0, present = 0, possible = 0, risk = 0;
     for (final c in list) {
       final r = reportForCourse(c);
-      students += c.enrolledCount;
+      students += enrolledCount(c.id);
       held += r.heldSessions.length;
       present += r.present;
       possible += r.possible;
@@ -402,9 +440,8 @@ class TeacherSnapshot {
   }
 
   /// Nombre del estudiante en la lista de la asignatura (o un genérico).
-  String studentName(String courseId, String uid) {
-    final course = courseById(courseId);
-    final entry = course?.rosterEntryFor(uid);
+  String studentName(String courseId, String email) {
+    final entry = enrollmentFor(courseId, email);
     return entry == null || entry.name.isEmpty ? 'Estudiante' : entry.name;
   }
 

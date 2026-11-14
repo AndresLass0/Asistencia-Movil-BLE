@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:proyecto_asistencia/models/academic_snapshot.dart';
 import 'package:proyecto_asistencia/models/course.dart';
+import 'package:proyecto_asistencia/models/enrollment.dart';
 import 'package:proyecto_asistencia/services/report_service.dart';
 
 import 'fixtures.dart';
@@ -129,5 +130,54 @@ void main() {
     );
     expect(String.fromCharCodes(bytes.take(4)), '%PDF');
     expect(bytes.length, greaterThan(1000));
+  });
+
+  group('AcademicSnapshot con matrículas', () {
+    Enrollment enroll(
+      Course c,
+      EnrollmentStatus status, {
+      DateTime? statusAt,
+    }) => Enrollment(
+      courseId: c.id,
+      email: email,
+      code: '12345',
+      name: 'Ana',
+      status: status,
+      statusAt: statusAt ?? DateTime(2026, 1, 1),
+    );
+
+    final a = course(id: 'a', name: 'A');
+    final b = course(id: 'b', name: 'B');
+    final c = course(id: 'c', name: 'C');
+    final d = course(id: 'd', name: 'D');
+    final s1 = session('s1', 'b', DateTime(2026, 10, 19, 18));
+    final s2 = session('s2', 'b', DateTime(2026, 10, 26, 18));
+
+    AcademicSnapshot snap() => AcademicSnapshot(
+      courses: [a, b, c, d],
+      sessions: [s1, s2],
+      attendance: const [],
+      enrollments: [
+        enroll(a, EnrollmentStatus.active),
+        // Canceló entre s1 y s2.
+        enroll(b, EnrollmentStatus.withdrawn, statusAt: DateTime(2026, 10, 22)),
+        enroll(c, EnrollmentStatus.invited),
+        enroll(d, EnrollmentStatus.declined),
+      ],
+    );
+
+    test('invitaciones aparte; rechazadas ocultas', () {
+      final data = snap();
+      expect(data.invitations.single.course.id, 'c');
+      expect(data.courses.map((x) => x.id), ['a', 'b']);
+      expect(data.currentCourses.map((x) => x.id), ['a']);
+    });
+
+    test('tras cancelar solo cuentan las faltas anteriores', () {
+      final data = snap();
+      final stats = data.statsFor(b);
+      expect(stats.absences, 1); // s1 sí, s2 ya había cancelado
+      expect(stats.canRegister, isFalse);
+    });
   });
 }

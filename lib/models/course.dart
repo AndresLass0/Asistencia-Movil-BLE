@@ -89,25 +89,22 @@ class ClassSchedule {
   );
 }
 
-/// Estudiante de la lista oficial que carga el docente (`courses.roster`).
-///
-/// [uid] se completa cuando el código coincide con una cuenta registrada en
-/// BioAsistencia (`codes/{code}`); hasta entonces el estudiante figura en la
-/// lista pero no puede registrar asistencia.
+/// Fila de una lista de estudiantes (importada de Excel/CSV o escrita por el
+/// docente) antes de guardarse como matrícula ([Enrollment]).
 class RosterEntry {
   const RosterEntry({
     required this.code,
     required this.name,
-    this.email = '',
-    this.uid,
+    required this.email,
+    this.program = '',
   });
 
   final String code;
   final String name;
-  final String email;
-  final String? uid;
 
-  bool get isLinked => uid != null && uid!.isNotEmpty;
+  /// Correo institucional en minúsculas: identifica al estudiante.
+  final String email;
+  final String program;
 
   /// "JP" para "Juan Pérez".
   String get initials {
@@ -115,34 +112,11 @@ class RosterEntry {
     final letters = parts.take(2).map((p) => p.characters.first.toUpperCase());
     return letters.isEmpty ? '?' : letters.join();
   }
-
-  RosterEntry withUid(String? value) =>
-      RosterEntry(code: code, name: name, email: email, uid: value);
-
-  static RosterEntry? tryParse(Object? raw) {
-    if (raw is! Map) return null;
-    final code = (raw['code'] as String? ?? '').trim();
-    if (code.isEmpty) return null;
-    final uid = raw['uid'] as String?;
-    return RosterEntry(
-      code: code,
-      name: (raw['name'] as String? ?? '').trim(),
-      email: (raw['email'] as String? ?? '').trim(),
-      uid: uid == null || uid.isEmpty ? null : uid,
-    );
-  }
-
-  Map<String, Object> toMap() => {
-    'code': code,
-    'name': name,
-    'email': email,
-    'uid': ?uid,
-  };
 }
 
-/// Asignatura (`courses/{id}`). La crea el docente desde la app (o la
-/// administración desde la consola); el estudiante la ve si su uid está en
-/// `students`.
+/// Asignatura (`courses/{id}`): un grupo de una materia con un docente. La
+/// lista de estudiantes está en `enrollments` (ver [Enrollment]); el
+/// estudiante ve la asignatura si tiene una matrícula con su correo.
 class Course {
   const Course({
     required this.id,
@@ -156,8 +130,6 @@ class Course {
     this.maxAbsences,
     this.teacherUid = '',
     this.code = '',
-    this.roster = const [],
-    this.students = const [],
     this.registrationMinutes = defaultRegistrationMinutes,
   });
 
@@ -188,25 +160,8 @@ class Course {
   /// Código interno de la asignatura (opcional).
   final String code;
 
-  /// Lista oficial de estudiantes cargada por el docente.
-  final List<RosterEntry> roster;
-
-  /// uid de los estudiantes matriculados (los que pueden registrar).
-  final List<String> students;
-
   /// Minutos que dura la ventana de registro al iniciar una sesión.
   final int registrationMinutes;
-
-  /// Estudiante de la lista con ese uid (o null).
-  RosterEntry? rosterEntryFor(String uid) {
-    for (final r in roster) {
-      if (r.uid == uid) return r;
-    }
-    return null;
-  }
-
-  /// Número de inscritos: la lista oficial o, si no hay, los matriculados.
-  int get enrolledCount => roster.isNotEmpty ? roster.length : students.length;
 
   /// Datos que escribe el docente (sin `id`).
   Map<String, Object?> toMap() => {
@@ -221,16 +176,9 @@ class Course {
     'schedule': [for (final s in schedule) s.toMap()],
     'maxAbsences': maxAbsences,
     'registrationMinutes': registrationMinutes,
-    'roster': [for (final r in roster) r.toMap()],
-    'students': students,
   };
 
-  Course copyWith({
-    String? id,
-    List<RosterEntry>? roster,
-    List<String>? students,
-    String? teacherName,
-  }) => Course(
+  Course copyWith({String? id, String? teacherName}) => Course(
     id: id ?? this.id,
     name: name,
     period: period,
@@ -242,16 +190,12 @@ class Course {
     maxAbsences: maxAbsences,
     teacherUid: teacherUid,
     code: code,
-    roster: roster ?? this.roster,
-    students: students ?? this.students,
     registrationMinutes: registrationMinutes,
   );
 
   factory Course.fromMap(String id, Map<String, dynamic> map) {
     final rawSchedule = map['schedule'];
     final max = map['maxAbsences'];
-    final rawRoster = map['roster'];
-    final rawStudents = map['students'];
     final minutes = map['registrationMinutes'];
     return Course(
       id: id,
@@ -272,15 +216,6 @@ class Course {
       maxAbsences: max is int && max >= 0 ? max : null,
       teacherUid: map['teacherUid'] as String? ?? '',
       code: map['code'] as String? ?? '',
-      roster: rawRoster is List
-          ? rawRoster
-                .map(RosterEntry.tryParse)
-                .whereType<RosterEntry>()
-                .toList()
-          : const [],
-      students: rawStudents is List
-          ? rawStudents.whereType<String>().toList()
-          : const [],
       registrationMinutes: minutes is int && minutes > 0 && minutes <= 240
           ? minutes
           : defaultRegistrationMinutes,

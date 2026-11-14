@@ -32,6 +32,8 @@ class AttendanceFailedScreen extends StatelessWidget {
     AttendanceFailure.noOpenSession => 'No encontramos la señal de la clase',
     AttendanceFailure.offline => 'Sin conexión con el servidor',
     AttendanceFailure.denied => 'No pudimos registrar tu asistencia',
+    AttendanceFailure.deviceInUse => 'Este celular ya registró a otra persona',
+    AttendanceFailure.unsupportedDevice => 'Registra desde tu celular',
     AttendanceFailure.unknown => 'Ocurrió un problema',
   };
 
@@ -49,6 +51,13 @@ class AttendanceFailedScreen extends StatelessWidget {
       AttendanceFailure.denied =>
         'La sesión pudo haberse cerrado o no estás matriculado en esta '
             'asignatura. Si crees que es un error, repórtalo al docente.',
+      AttendanceFailure.deviceInUse =>
+        'Desde este celular ya se registró a otro estudiante en esta '
+            'sesión. Cada estudiante debe registrar su asistencia desde su '
+            'propio celular.',
+      AttendanceFailure.unsupportedDevice =>
+        'La asistencia solo se puede registrar desde la app instalada en tu '
+            'celular (Android o iOS).',
       AttendanceFailure.unknown =>
         'No se pudo completar el registro. Inténtalo de nuevo en unos '
             'segundos.',

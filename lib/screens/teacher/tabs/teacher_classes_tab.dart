@@ -5,6 +5,7 @@ import '../../../core/date_format.dart';
 import '../../../models/academic_snapshot.dart';
 import '../../../models/course.dart';
 import '../../../models/course_session.dart';
+import '../../../models/enrollment.dart';
 import '../../../models/teacher_snapshot.dart';
 import '../../../widgets/app_card.dart';
 import '../../../widgets/percent_ring.dart';
@@ -116,6 +117,11 @@ class TeacherClassesTab extends StatelessWidget {
             _CourseCard(
               course: c,
               report: data.reportForCourse(c),
+              enrolled: data.enrolledCount(c.id),
+              invited: data
+                  .currentListOf(c.id)
+                  .where((e) => e.status == EnrollmentStatus.invited)
+                  .length,
               active: data.activeSessionFor(c.id),
               isPast: c.period != period,
               onEdit: () => onEdit(c),
@@ -324,7 +330,7 @@ class _FeaturedCard extends StatelessWidget {
             _InfoLine(icon: Icons.domain, text: course.location),
           _InfoLine(
             icon: Icons.groups_outlined,
-            text: '${course.enrolledCount} estudiantes en la lista',
+            text: '${data.enrolledCount(course.id)} estudiantes matriculados',
           ),
           const SizedBox(height: 14),
           PrimaryButton(
@@ -433,10 +439,16 @@ class _CourseCard extends StatelessWidget {
     required this.onDelete,
     required this.onStart,
     required this.onOpenSession,
+    this.enrolled = 0,
+    this.invited = 0,
   });
 
   final Course course;
   final CourseReport report;
+
+  /// Matriculados e invitaciones pendientes.
+  final int enrolled;
+  final int invited;
   final CourseSession? active;
   final bool isPast;
   final VoidCallback onEdit;
@@ -446,8 +458,6 @@ class _CourseCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final linked = course.roster.where((r) => r.isLinked).length;
-    final unlinked = course.roster.length - linked;
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -519,10 +529,10 @@ class _CourseCard extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  course.roster.isEmpty && course.students.isEmpty
+                  enrolled == 0 && invited == 0
                       ? 'Sin estudiantes en la lista'
-                      : '${course.enrolledCount} estudiantes'
-                            '${unlinked > 0 ? ' · $unlinked sin cuenta' : ''}'
+                      : '$enrolled ${enrolled == 1 ? 'estudiante' : 'estudiantes'}'
+                            '${invited > 0 ? ' · $invited ${invited == 1 ? 'invitación' : 'invitaciones'}' : ''}'
                             ' · ${report.heldSessions.length} sesiones',
                   style: const TextStyle(color: AppColors.hint),
                 ),
@@ -589,19 +599,26 @@ class _CourseCard extends StatelessWidget {
 
 /// Hoja para elegir la duración de la ventana de registro.
 /// Devuelve los minutos elegidos o null si se cancela.
-Future<int?> showSessionDurationSheet(BuildContext context, Course course) {
+Future<int?> showSessionDurationSheet(
+  BuildContext context,
+  Course course, {
+  int enrolled = 0,
+}) {
   return showModalBottomSheet<int>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (_) => _DurationSheet(course: course),
+    builder: (_) => _DurationSheet(course: course, enrolled: enrolled),
   );
 }
 
 class _DurationSheet extends StatefulWidget {
-  const _DurationSheet({required this.course});
+  const _DurationSheet({required this.course, required this.enrolled});
 
   final Course course;
+
+  /// Estudiantes matriculados (si es 0 se avisa).
+  final int enrolled;
 
   @override
   State<_DurationSheet> createState() => _DurationSheetState();
@@ -616,7 +633,6 @@ class _DurationSheetState extends State<_DurationSheet> {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final linked = widget.course.students.length;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
@@ -667,12 +683,11 @@ class _DurationSheetState extends State<_DurationSheet> {
                 ),
               ],
             ),
-            if (linked == 0) ...[
+            if (widget.enrolled == 0) ...[
               const SizedBox(height: 12),
               const Text(
-                'Ningún estudiante de la lista tiene cuenta en BioAsistencia '
-                'todavía, así que nadie podrá registrarse. Cuando se '
-                'registren, edita la clase para vincularlos.',
+                'La clase no tiene estudiantes matriculados, así que nadie '
+                'podrá registrarse. Edita la clase para cargar la lista.',
                 style: TextStyle(fontSize: 12.5, color: AppColors.required),
               ),
             ],

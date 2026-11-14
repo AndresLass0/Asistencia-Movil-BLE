@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../core/app_colors.dart';
+import '../core/auth_messages.dart';
 import '../core/ui_messages.dart';
 import '../models/academic_snapshot.dart';
 import '../models/course.dart';
+import '../models/enrollment.dart';
 import '../models/user_profile.dart';
 import '../services/report_service.dart';
 import '../services/student_backend.dart';
@@ -104,7 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onError: (_) => setState(() => _profile = null),
         );
     _academicSub = widget.backend
-        .watchAcademic(uid)
+        .watchAcademic(widget.email)
         .listen(
           _onAcademic,
           onError: (Object e) => _setAcademic(AcademicState.error(e)),
@@ -199,26 +202,92 @@ class _HomeScreenState extends State<HomeScreen> {
           uid: widget.uid,
           backend: widget.backend,
           onRegister: _registerAttendance,
+          onWithdraw: _withdraw,
         ),
       ),
+    );
+  }
+
+  /// Cambia el estado de la propia matrícula y avisa del resultado.
+  Future<bool> _setStatus(
+    Enrollment enrollment,
+    EnrollmentStatus status,
+    String done,
+  ) async {
+    try {
+      await widget.backend.setEnrollmentStatus(enrollment, status);
+      if (mounted) showAppMessage(context, done);
+      return true;
+    } on FirebaseException catch (e) {
+      if (mounted) showAppMessage(context, firestoreErrorMessage(e));
+    } on TimeoutException {
+      if (mounted) {
+        showAppMessage(context, 'Sin conexión. Inténtalo de nuevo.');
+      }
+    }
+    return false;
+  }
+
+  Future<void> _respondInvitation(CourseInvitation inv, bool accept) =>
+      _setStatus(
+        inv.enrollment,
+        accept ? EnrollmentStatus.active : EnrollmentStatus.declined,
+        accept
+            ? 'Te uniste a ${inv.course.name}.'
+            : 'Rechazaste la invitación a ${inv.course.name}.',
+      );
+
+  /// Cancelar la asignatura (con confirmación). El docente recibe el aviso.
+  Future<bool> _withdraw(Course course) async {
+    final enrollment = _academic.value.data?.enrollmentFor(course.id);
+    if (enrollment == null || !enrollment.isActive) return false;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('¿Cancelar ${course.name}?'),
+        content: const Text(
+          'Dejarás de aparecer en la lista de la clase y no podrás registrar '
+          'asistencia. Tu historial se conserva y el docente recibirá un '
+          'aviso. Para volver, el docente tendrá que invitarte de nuevo.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Volver'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.required),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cancelar asignatura'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return false;
+    return _setStatus(
+      enrollment,
+      EnrollmentStatus.withdrawn,
+      'Cancelaste ${course.name}.',
     );
   }
 
   void _showOpenSessions() {
     final data = _academic.value.data;
     final pending = data?.pendingOpenCourses ?? const <Course>[];
+    final invitations = data?.invitations ?? const <CourseInvitation>[];
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (sheetContext) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Sesiones abiertas',
+                'Avisos',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 8),
@@ -252,6 +321,37 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: const Text('Registrar'),
                   ),
                 ),
+              if (invitations.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  'Invitaciones',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+                for (final inv in invitations)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(
+                      Icons.mail_outline,
+                      color: AppColors.primary,
+                    ),
+                    title: Text(
+                      inv.course.name,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      inv.course.teacherName.isEmpty
+                          ? 'Te invitaron a esta clase'
+                          : 'Prof. ${inv.course.teacherName} te invitó',
+                    ),
+                    trailing: FilledButton(
+                      onPressed: () {
+                        Navigator.pop(sheetContext);
+                        _respondInvitation(inv, true);
+                      },
+                      child: const Text('Aceptar'),
+                    ),
+                  ),
+              ],
             ],
           ),
         ),
@@ -296,6 +396,7 @@ class _HomeScreenState extends State<HomeScreen> {
           settings: _profile?.settings ?? const UserSettings(),
           onRegisterAttendance: _registerAttendance,
           onOpenCourse: _openCourse,
+          onRespondInvitation: _respondInvitation,
         );
       case 1:
         return ClassesTab(
@@ -343,7 +444,9 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: HomeHeader(
         subtitle: subtitle,
         campus: _profile?.campus ?? '',
-        pendingSessions: state.data?.pendingOpenCourses.length ?? 0,
+        pendingSessions:
+            (state.data?.pendingOpenCourses.length ?? 0) +
+            (state.data?.invitations.length ?? 0),
         onNotifications: _showOpenSessions,
       ),
       body: _buildTab(state),
